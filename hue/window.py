@@ -38,7 +38,7 @@ class HueWindow(Adw.ApplicationWindow):
 
         toolbars = Adw.ToolbarView()
         toolbars.add_top_bar(self._build_header())
-        toolbars.add_bottom_bar(ColorBar(self.colors))
+        toolbars.add_bottom_bar(self._build_bottom_bar())
         toolbars.set_content(self._build_content())
 
         self.toasts.set_child(toolbars)
@@ -89,6 +89,26 @@ class HueWindow(Adw.ApplicationWindow):
         header.pack_end(menu_button)
         header.pack_end(history)
         return header
+
+    def _build_bottom_bar(self) -> Gtk.Widget:
+        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+
+        colors = ColorBar(self.colors)
+        colors.set_hexpand(True)
+        bar.append(colors)
+
+        # The canvas size lives here rather than in the header subtitle, which
+        # renders too small to read at larger interface font sizes.
+        self._canvas_size_label = Gtk.Label()
+        self._canvas_size_label.add_css_class("numeric")
+        button = Gtk.Button(tooltip_text="Canvas size (Ctrl+E)")
+        button.set_child(self._canvas_size_label)
+        button.add_css_class("flat")
+        button.set_valign(Gtk.Align.CENTER)
+        button.set_margin_end(12)
+        button.set_action_name("win.resize")
+        bar.append(button)
+        return bar
 
     def _build_content(self) -> Gtk.Widget:
         content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
@@ -215,13 +235,13 @@ class HueWindow(Adw.ApplicationWindow):
         document = self.canvas.document
         marker = " •" if document.modified else ""
         self._title.set_title(f"{document.title}{marker}")
-        self._title.set_subtitle(f"{document.width} × {document.height}")
+        self._canvas_size_label.set_label(f"{document.width} × {document.height} px")
         self.lookup_action("undo").set_enabled(document.can_undo)
         self.lookup_action("redo").set_enabled(document.can_redo)
 
     def _on_resize_preview(self, canvas, width: int, height: int) -> None:
-        """Show the pending size in the title bar while a grip is being dragged."""
-        self._title.set_subtitle(f"{width} × {height}")
+        """Count out the pending size while a resize grip is being dragged."""
+        self._canvas_size_label.set_label(f"{width} × {height} px")
 
     def _toast(self, message: str) -> None:
         self.toasts.add_toast(Adw.Toast(title=message))
@@ -258,10 +278,14 @@ class HueWindow(Adw.ApplicationWindow):
 
     def _prompt_size(self, heading, body, size, accept_id, accept_label, on_accept) -> None:
         """Ask for a width/height pair, then hand it to on_accept."""
-        width_spin = Gtk.SpinButton.new_with_range(1, MAX_SIZE, 1)
-        width_spin.set_value(size[0])
-        height_spin = Gtk.SpinButton.new_with_range(1, MAX_SIZE, 1)
-        height_spin.set_value(size[1])
+        spins = []
+        for value in size:
+            spin = Gtk.SpinButton.new_with_range(1, MAX_SIZE, 1)
+            spin.set_value(value)
+            # Wide enough for the largest allowed size in any interface font.
+            spin.set_width_chars(len(str(MAX_SIZE)) + 1)
+            spins.append(spin)
+        width_spin, height_spin = spins
 
         grid = Gtk.Grid(row_spacing=6, column_spacing=12, margin_top=12)
         grid.attach(Gtk.Label(label="Width", xalign=1), 0, 0, 1, 1)

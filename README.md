@@ -79,10 +79,11 @@ in the format matching the file extension, defaulting to PNG.
 ## Resizing the canvas
 
 Drag one of the three grips on the right, bottom and bottom-right edge of the image to
-resize it by hand; the dashed outline and the size in the title bar follow the pointer,
-and the change is applied when you let go. For an exact size, use **Canvas Size…**
-(`Ctrl+E`) in the main menu. Either way the image keeps its top-left corner — growing
-the canvas adds white, shrinking it crops — and the resize can be undone with `Ctrl+Z`.
+resize it by hand; the dashed outline and the size readout in the bottom bar follow the
+pointer, and the change is applied when you let go. For an exact size, click that
+readout or use **Canvas Size…** (`Ctrl+E`) in the main menu. Either way the image keeps
+its top-left corner — growing the canvas adds white, shrinking it crops — and the
+resize can be undone with `Ctrl+Z`.
 
 ## Theming
 
