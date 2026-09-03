@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.rafa.Hue</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Hue</name>
+  <summary>Draw and edit raster images</summary>
+  <description>
+    <p>
+      Hue is a straightforward raster paint application for the GNOME desktop, in the
+      spirit of the classic Paint. It gives you the core drawing tools and gets out of
+      the way.
+    </p>
+    <p>Tools included:</p>
+    <ul>
+      <li>Pencil, brush and eraser</li>
+      <li>Line, rectangle and ellipse, filled or outlined</li>
+      <li>Flood fill and colour picker</li>
+      <li>Undo and redo history</li>
+    </ul>
+    <p>
+      Hue works entirely offline: it never connects to the network and keeps every
+      image on your own machine.
+    </p>
+  </description>
+  <developer id="io.github.rafa">
+    <name>Hue contributors</name>
+  </developer>
+  <launchable type="desktop-id">io.github.rafa.Hue.desktop</launchable>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>Graphics</category>
+    <category>RasterGraphics</category>
+  </categories>
+  <releases>
+    <release version="0.1.0" date="2026-09-03">
+      <description><p>First release with the core drawing tools.</p></description>
+    </release>
+  </releases>
+</component>

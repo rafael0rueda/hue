@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+
+# Meson / build output
+builddir/
+build/
+_build/
+
+# flatpak-builder output
+.flatpak-builder/
+repo/

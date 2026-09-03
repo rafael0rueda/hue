@@ -1,0 +1,43 @@
+python.install_sources(
+  files(
+    '__init__.py',
+    '__main__.py',
+    'canvas.py',
+    'color.py',
+    'document.py',
+    'file_io.py',
+    'main.py',
+    'window.py',
+  ),
+  subdir: 'hue',
+)
+
+python.install_sources(
+  files(
+    'tools/__init__.py',
+    'tools/base.py',
+    'tools/brush.py',
+    'tools/ellipse.py',
+    'tools/eraser.py',
+    'tools/fill.py',
+    'tools/line.py',
+    'tools/pencil.py',
+    'tools/picker.py',
+    'tools/rectangle.py',
+  ),
+  subdir: 'hue/tools',
+)
+
+launcher = configuration_data()
+launcher.set('PYTHON', python.full_path())
+launcher.set('PYTHON_DIR', python.get_install_dir())
+launcher.set('PKGDATADIR', pkgdatadir)
+
+configure_file(
+  input: 'hue.in',
+  output: 'hue',
+  configuration: launcher,
+  install: true,
+  install_dir: bindir,
+  install_mode: 'rwxr-xr-x',
+)

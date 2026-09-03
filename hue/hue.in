@@ -1,0 +1,10 @@
+#!@PYTHON@
+import os
+import sys
+
+sys.path.insert(1, '@PYTHON_DIR@')
+os.environ.setdefault('HUE_DATA_DIR', '@PKGDATADIR@')
+
+from hue.main import main
+
+sys.exit(main())

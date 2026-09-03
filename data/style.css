@@ -1,0 +1,31 @@
+/* Hue only styles the few things libadwaita does not cover. Every colour below
+   comes from libadwaita's palette, so the app follows the system light/dark
+   preference and accent colour automatically. Re-theming means editing this file. */
+
+.hue-sidebar {
+  background-color: @sidebar_bg_color;
+  padding: 12px;
+}
+
+.hue-tool {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+.hue-tool:checked {
+  background-color: alpha(@accent_bg_color, 0.85);
+  color: @accent_fg_color;
+}
+
+.hue-canvas-area {
+  background-color: @view_bg_color;
+}
+
+.hue-canvas {
+  margin: 24px;
+  box-shadow: 0 2px 8px alpha(@dark_5, 0.25);
+}
+
+.hue-swatch {
+  border-radius: 4px;
+}
