@@ -56,7 +56,7 @@ class HueWindow(Adw.ApplicationWindow):
         for icon, action, tooltip in (
             ("document-new-symbolic", "win.new", "New image (Ctrl+N)"),
             ("document-open-symbolic", "win.open", "Open image (Ctrl+O)"),
-            ("document-save-symbolic", "win.save", "Save (Ctrl+S)"),
+            ("hue-save-symbolic", "win.save", "Save (Ctrl+S)"),
         ):
             button = Gtk.Button(icon_name=icon, tooltip_text=tooltip)
             button.set_action_name(action)
