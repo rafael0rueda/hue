@@ -5,7 +5,7 @@ from gi.repository import Adw, Gio, GLib, Gtk
 from . import APP_NAME
 from .canvas import Canvas
 from .color import ColorBar, ColorState
-from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, Document
+from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_SIZE, Document, new_surface
 from .file_io import image_filters, load_document, save_document
 from .tools import TOOL_CLASSES
 
@@ -30,6 +30,7 @@ class HueWindow(Adw.ApplicationWindow):
         self.colors = ColorState()
         self.canvas = Canvas(document or Document(), self.colors)
         self.canvas.connect("color-picked", self._on_color_picked)
+        self.canvas.connect("resize-preview", self._on_resize_preview)
         self._closing = False
 
         self._title = Adw.WindowTitle(title=APP_NAME)
@@ -75,6 +76,7 @@ class HueWindow(Adw.ApplicationWindow):
         menu = Gio.Menu()
         file_section = Gio.Menu()
         file_section.append("Save As…", "win.save-as")
+        file_section.append("Canvas Size…", "win.resize")
         menu.append_section(None, file_section)
         app_section = Gio.Menu()
         app_section.append(f"About {APP_NAME}", "app.about")
@@ -147,6 +149,7 @@ class HueWindow(Adw.ApplicationWindow):
             "undo": lambda *_: self.canvas.document.undo(),
             "redo": lambda *_: self.canvas.document.redo(),
             "swap-colors": lambda *_: self.colors.swap(),
+            "resize": lambda *_: self._prompt_canvas_size(),
         }
         for name, callback in simple_actions.items():
             action = Gio.SimpleAction.new(name, None)
@@ -168,6 +171,7 @@ class HueWindow(Adw.ApplicationWindow):
             "win.undo": ["<Control>z"],
             "win.redo": ["<Control><Shift>z", "<Control>y"],
             "win.swap-colors": ["x"],
+            "win.resize": ["<Control>e"],
             "app.quit": ["<Control>q"],
         }
         for tool_id, key in TOOL_ACCELS.items():
@@ -215,6 +219,10 @@ class HueWindow(Adw.ApplicationWindow):
         self.lookup_action("undo").set_enabled(document.can_undo)
         self.lookup_action("redo").set_enabled(document.can_redo)
 
+    def _on_resize_preview(self, canvas, width: int, height: int) -> None:
+        """Show the pending size in the title bar while a grip is being dragged."""
+        self._title.set_subtitle(f"{width} × {height}")
+
     def _toast(self, message: str) -> None:
         self.toasts.add_toast(Adw.Toast(title=message))
 
@@ -248,11 +256,12 @@ class HueWindow(Adw.ApplicationWindow):
     def _action_new(self, *_) -> None:
         self._confirm_discard(self._prompt_new_size)
 
-    def _prompt_new_size(self) -> None:
-        width_spin = Gtk.SpinButton.new_with_range(1, 8192, 1)
-        width_spin.set_value(DEFAULT_WIDTH)
-        height_spin = Gtk.SpinButton.new_with_range(1, 8192, 1)
-        height_spin.set_value(DEFAULT_HEIGHT)
+    def _prompt_size(self, heading, body, size, accept_id, accept_label, on_accept) -> None:
+        """Ask for a width/height pair, then hand it to on_accept."""
+        width_spin = Gtk.SpinButton.new_with_range(1, MAX_SIZE, 1)
+        width_spin.set_value(size[0])
+        height_spin = Gtk.SpinButton.new_with_range(1, MAX_SIZE, 1)
+        height_spin.set_value(size[1])
 
         grid = Gtk.Grid(row_spacing=6, column_spacing=12, margin_top=12)
         grid.attach(Gtk.Label(label="Width", xalign=1), 0, 0, 1, 1)
@@ -260,24 +269,45 @@ class HueWindow(Adw.ApplicationWindow):
         grid.attach(Gtk.Label(label="Height", xalign=1), 0, 1, 1, 1)
         grid.attach(height_spin, 1, 1, 1, 1)
 
-        dialog = Adw.AlertDialog(heading="New image", body="Choose a canvas size in pixels.")
+        dialog = Adw.AlertDialog(heading=heading, body=body)
         dialog.set_extra_child(grid)
         dialog.add_response("cancel", "Cancel")
-        dialog.add_response("create", "Create")
-        dialog.set_response_appearance("create", Adw.ResponseAppearance.SUGGESTED)
-        dialog.set_default_response("create")
+        dialog.add_response(accept_id, accept_label)
+        dialog.set_response_appearance(accept_id, Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response(accept_id)
         dialog.set_close_response("cancel")
 
         def on_response(_dialog, response: str) -> None:
-            if response != "create":
-                return
-            from .document import new_surface
-
-            surface = new_surface(int(width_spin.get_value()), int(height_spin.get_value()))
-            self._set_document(Document(surface))
+            if response == accept_id:
+                on_accept(int(width_spin.get_value()), int(height_spin.get_value()))
 
         dialog.connect("response", on_response)
         dialog.present(self)
+
+    def _prompt_new_size(self) -> None:
+        def create(width: int, height: int) -> None:
+            self._set_document(Document(new_surface(width, height)))
+
+        self._prompt_size(
+            "New image",
+            "Choose a canvas size in pixels.",
+            (DEFAULT_WIDTH, DEFAULT_HEIGHT),
+            "create",
+            "Create",
+            create,
+        )
+
+    def _prompt_canvas_size(self) -> None:
+        document = self.canvas.document
+
+        self._prompt_size(
+            "Canvas size",
+            "The image keeps its top-left corner; extra space is filled with white.",
+            (document.width, document.height),
+            "resize",
+            "Resize",
+            document.resize,
+        )
 
     def _action_open(self, *_) -> None:
         self._confirm_discard(self._show_open_dialog)

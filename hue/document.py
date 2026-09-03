@@ -6,6 +6,7 @@ from gi.repository import Gdk, GdkPixbuf, GObject
 MAX_UNDO = 50
 DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 600
+MAX_SIZE = 8192
 
 
 def new_surface(width: int, height: int, fill=(1.0, 1.0, 1.0, 1.0)) -> cairo.ImageSurface:
@@ -85,6 +86,23 @@ class Document(GObject.Object):
             return
         self._undo.append(copy_surface(self.surface))
         self.surface = self._redo.pop()
+        self.commit_change()
+
+    def resize(self, width: int, height: int, fill=(1.0, 1.0, 1.0, 1.0)) -> None:
+        """Grow or crop the canvas, keeping the existing pixels anchored top-left."""
+        width = max(1, min(int(width), MAX_SIZE))
+        height = max(1, min(int(height), MAX_SIZE))
+        if width == self.width and height == self.height:
+            return
+
+        self.begin_change()
+        surface = new_surface(width, height, fill)
+        cr = cairo.Context(surface)
+        cr.set_operator(cairo.OPERATOR_SOURCE)
+        cr.set_source_surface(self.surface, 0, 0)
+        cr.rectangle(0, 0, min(width, self.width), min(height, self.height))
+        cr.fill()
+        self.surface = surface
         self.commit_change()
 
     @classmethod

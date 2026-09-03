@@ -22,8 +22,9 @@
 }
 
 .hue-canvas {
+  /* The widget reserves a few pixels past the image for the resize grips, so
+     the image itself draws its own outline instead of using a box-shadow. */
   margin: 24px;
-  box-shadow: 0 2px 8px alpha(@dark_5, 0.25);
 }
 
 .hue-swatch {

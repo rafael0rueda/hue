@@ -69,11 +69,20 @@ colour, right click the secondary. `X` swaps them.
 | Action                      | Shortcut                                        |
 | --------------------------- | ----------------------------------------------- |
 | New / Open / Save / Save As | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` / `Ctrl+Shift+S` |
+| Canvas size                 | `Ctrl+E`                                        |
 | Undo / Redo                 | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`)         |
 | Quit                        | `Ctrl+Q`                                        |
 
 Images open in any format GdkPixbuf reads (PNG, JPEG, BMP, TIFF, WebP…) and are saved
 in the format matching the file extension, defaulting to PNG.
+
+## Resizing the canvas
+
+Drag one of the three grips on the right, bottom and bottom-right edge of the image to
+resize it by hand; the dashed outline and the size in the title bar follow the pointer,
+and the change is applied when you let go. For an exact size, use **Canvas Size…**
+(`Ctrl+E`) in the main menu. Either way the image keeps its top-left corner — growing
+the canvas adds white, shrinking it crops — and the resize can be undone with `Ctrl+Z`.
 
 ## Theming
 
