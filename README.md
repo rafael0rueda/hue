@@ -59,6 +59,7 @@ reach the network, and the sandbox enforces that.
 | Line          | `L` |                                              |
 | Rectangle     | `R` | "Fill shape" fills with the secondary colour |
 | Ellipse       | `O` |                                              |
+| Text          | `T` | Type onto the canvas in any installed font   |
 | Fill          | `F` | Flood fill with a small colour tolerance     |
 | Colour picker | `K` | Picks the colour under the cursor            |
 
@@ -72,6 +73,7 @@ colour, right click the secondary. `X` swaps them.
 | Canvas size                 | `Ctrl+E`                                        |
 | Copy / Paste                | `Ctrl+C` / `Ctrl+V`                             |
 | Land / discard a paste      | `Enter` / `Esc`                                 |
+| Land / discard typed text   | `Ctrl+Enter` / `Esc`                            |
 | Undo / Redo                 | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`)         |
 | Quit                        | `Ctrl+Q`                                        |
 
@@ -104,6 +106,26 @@ both the pixels and the new canvas size.
 
 `Ctrl+C` copies the whole canvas the other way, so it can be pasted into other
 applications.
+
+## Adding text
+
+Pick the text tool (`T`) and click where the text should start: a dashed box appears
+with a caret in it, and what you type is drawn straight onto the canvas in the primary
+colour — right-click instead to type in the secondary one. **Font…** in the sidebar
+picks the family, style and size, and applies to the box you are typing in as well as
+the next one.
+
+The text stays editable until it lands. `Enter` starts a new line, the arrow keys,
+`Home`, `End`, `Backspace` and `Delete` work as usual, and clicking inside the box puts
+the caret where you clicked. Dragging the box moves it. Nothing is written into the
+image until you press `Ctrl+Enter`, click outside the box, or switch to another tool;
+`Esc` or `Ctrl+Z` throws it away instead.
+
+Once it lands the text is pixels like everything else — there is no going back to
+editing it, only `Ctrl+Z`. Text that runs off the right or bottom edge grows the canvas
+the same way a paste does. Because the image should look the same everywhere, the text
+is laid out at 96 dpi regardless of the desktop's text scaling, so a size of 24 always
+gives the same pixels.
 
 ## Theming
 

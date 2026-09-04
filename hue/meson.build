@@ -11,6 +11,7 @@ python.install_sources(
     'document.py',
     'file_io.py',
     'main.py',
+    'text.py',
     'window.py',
   ),
   subdir: 'hue',
@@ -28,6 +29,7 @@ python.install_sources(
     'tools/pencil.py',
     'tools/picker.py',
     'tools/rectangle.py',
+    'tools/text.py',
   ),
   subdir: 'hue/tools',
 )

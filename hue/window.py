@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 from . import APP_NAME
 from .canvas import Canvas
@@ -11,6 +11,7 @@ from .clipboard import has_image, read_image, texture_from_surface
 from .color import ColorBar, ColorState
 from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_SIZE, Document, new_surface
 from .file_io import image_filters, load_document, save_document
+from .text import DEFAULT_FONT
 from .tools import TOOL_CLASSES
 
 TOOL_ACCELS = {
@@ -20,6 +21,7 @@ TOOL_ACCELS = {
     "line": "l",
     "rectangle": "r",
     "ellipse": "o",
+    "text": "t",
     "fill": "f",
     "picker": "k",
 }
@@ -35,8 +37,9 @@ class HueWindow(Adw.ApplicationWindow):
         self.canvas = Canvas(document or Document(), self.colors)
         self.canvas.connect("color-picked", self._on_color_picked)
         self.canvas.connect("resize-preview", self._on_resize_preview)
-        self.canvas.connect("paste-changed", lambda *_: self._sync_state())
+        self.canvas.connect("floating-changed", self._on_floating_changed)
         self._closing = False
+        self._typing = False
 
         self._title = Adw.WindowTitle(title=APP_NAME)
         self.toasts = Adw.ToastOverlay()
@@ -165,6 +168,18 @@ class HueWindow(Adw.ApplicationWindow):
         self._fill_check.connect("toggled", self._on_fill_toggled)
         sidebar.append(self._fill_check)
 
+        # A caption of our own rather than a GtkFontDialogButton, whose label
+        # grows the sidebar to fit whatever font name it is showing.
+        self._font_label = Gtk.Label(label=DEFAULT_FONT, xalign=0)
+        self._font_label.add_css_class("caption")
+        self._font_label.set_ellipsize(Pango.EllipsizeMode.END)
+        sidebar.append(self._font_label)
+
+        self._font_button = Gtk.Button(label="Font…", tooltip_text="Font for the text tool")
+        self._font_button.set_sensitive(False)
+        self._font_button.connect("clicked", self._choose_font)
+        sidebar.append(self._font_button)
+
         return sidebar
 
     # Actions
@@ -212,15 +227,23 @@ class HueWindow(Adw.ApplicationWindow):
         for action_name, keys in accels.items():
             app.set_accels_for_action(action_name, keys)
 
+        # Typing into a text box must not trip the shortcuts that are a bare key.
+        self._single_key_accels = {
+            name: keys
+            for name, keys in accels.items()
+            if all("<" not in key for key in keys)
+        }
+
         clipboard = self.get_clipboard()
         clipboard.connect("changed", lambda *_: self._sync_paste_action())
         self._sync_paste_action()
 
     def _on_tool_changed(self, action, value: GLib.Variant) -> None:
-        self.canvas.commit_paste()
+        self.canvas.commit_floating()
         action.set_state(value)
         self.canvas.select_tool(value.get_string())
         self._fill_check.set_sensitive(self.canvas.supports_fill)
+        self._font_button.set_sensitive(self.canvas.supports_font)
 
     def _on_size_changed(self, scale: Gtk.Scale) -> None:
         size = int(scale.get_value())
@@ -229,6 +252,20 @@ class HueWindow(Adw.ApplicationWindow):
 
     def _on_fill_toggled(self, check: Gtk.CheckButton) -> None:
         self.canvas.fill_shapes = check.get_active()
+
+    def _choose_font(self, *_) -> None:
+        dialog = Gtk.FontDialog(title="Text font")
+
+        def on_done(source, result):
+            try:
+                description = source.choose_font_finish(result)
+            except GLib.Error:
+                return
+            font = description.to_string()
+            self._font_label.set_label(font)
+            self.canvas.set_font(font)
+
+        dialog.choose_font(self, Pango.FontDescription(self.canvas.font), None, on_done)
 
     def _on_color_picked(self, canvas, color, button) -> None:
         from gi.repository import Gdk
@@ -253,12 +290,26 @@ class HueWindow(Adw.ApplicationWindow):
         document = self.canvas.document
         marker = " •" if document.modified else ""
         self._title.set_title(f"{document.title}{marker}")
-        # While a paste floats this counts out the size committing would leave.
+        # While a paste or a text box floats this counts out the size a commit
+        # would leave.
         width, height = self.canvas.pending_size
         self._canvas_size_label.set_label(f"{width} × {height} px")
-        # Undo also takes back a paste that has not been stamped down yet.
-        self.lookup_action("undo").set_enabled(document.can_undo or self.canvas.has_paste)
+        # Undo also takes back what has not been stamped down yet.
+        self.lookup_action("undo").set_enabled(document.can_undo or self.canvas.has_floating)
         self.lookup_action("redo").set_enabled(document.can_redo)
+
+    def _on_floating_changed(self, *_) -> None:
+        self._sync_state()
+        self._sync_typing_accels()
+
+    def _sync_typing_accels(self) -> None:
+        """Give the one-key shortcuts back and forth as a text box comes and goes."""
+        if self.canvas.is_typing == self._typing:
+            return
+        self._typing = self.canvas.is_typing
+        app = self.get_application()
+        for name, keys in self._single_key_accels.items():
+            app.set_accels_for_action(name, [] if self._typing else keys)
 
     def _on_resize_preview(self, canvas, width: int, height: int) -> None:
         """Count out the pending size while a resize grip is being dragged."""
@@ -270,7 +321,7 @@ class HueWindow(Adw.ApplicationWindow):
         self.lookup_action("paste").set_enabled(has_image(self.get_clipboard()))
 
     def _copy(self) -> None:
-        self.canvas.commit_paste()
+        self.canvas.commit_floating()
         document = self.canvas.document
         texture = texture_from_surface(document.surface)
         self.get_clipboard().set_content(Gdk.ContentProvider.new_for_value(texture))
@@ -282,15 +333,15 @@ class HueWindow(Adw.ApplicationWindow):
         read_image(self.get_clipboard(), self.canvas.begin_paste, self._toast)
 
     def _action_undo(self, *_) -> None:
-        # A floating paste has not been stamped down yet, so undo just drops it.
-        if not self.canvas.cancel_paste():
+        # A paste or a text box has not been stamped down yet, so undo drops it.
+        if not self.canvas.cancel_floating():
             self.canvas.document.undo()
 
     def _toast(self, message: str) -> None:
         self.toasts.add_toast(Adw.Toast(title=message))
 
     def _confirm_discard(self, proceed) -> None:
-        self.canvas.commit_paste()
+        self.canvas.commit_floating()
         document = self.canvas.document
         if not document.modified:
             proceed()
@@ -366,7 +417,7 @@ class HueWindow(Adw.ApplicationWindow):
         )
 
     def _prompt_canvas_size(self) -> None:
-        self.canvas.commit_paste()
+        self.canvas.commit_floating()
         document = self.canvas.document
 
         self._prompt_size(
@@ -398,7 +449,7 @@ class HueWindow(Adw.ApplicationWindow):
 
     def _save(self, then=None) -> None:
         # What gets written should match what is on screen.
-        self.canvas.commit_paste()
+        self.canvas.commit_floating()
         document = self.canvas.document
         if document.file is None:
             self._save_as(then)
@@ -406,7 +457,7 @@ class HueWindow(Adw.ApplicationWindow):
         self._write(document.file, then)
 
     def _save_as(self, then=None) -> None:
-        self.canvas.commit_paste()
+        self.canvas.commit_floating()
         document = self.canvas.document
         dialog = Gtk.FileDialog(title="Save Image", filters=image_filters())
         dialog.set_initial_name(document.title if document.file else "Untitled.png")

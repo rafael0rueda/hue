@@ -11,15 +11,28 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk
 from .clipboard import surface_from_file, surface_from_texture
 from .color import ColorState
 from .document import MAX_SIZE, Document
-from .tools import SHAPE_TOOL_IDS, Tool, ToolContext, create_tools
+from .text import DEFAULT_FONT, TextBox
+from .tools import SHAPE_TOOL_IDS, TEXT_TOOL_ID, Tool, ToolContext, create_tools
 
 CHECKER_SIZE = 8
 HANDLE_SIZE = 10
 HANDLE_GRAB = 12
 # Room around the image so the grips sitting on its edge are fully visible.
 HANDLE_MARGIN = 8
+# Breathing room between the typed text and its dashed outline.
+TEXT_PADDING = 3
+CARET_BLINK_MS = 530
+# How far the pointer has to travel before a click inside a text box counts
+# as dragging it somewhere else rather than placing the caret.
+MOVE_THRESHOLD = 4
 
-HANDLE_CURSORS = {"e": "ew-resize", "s": "ns-resize", "se": "nwse-resize", "paste": "move"}
+HANDLE_CURSORS = {
+    "e": "ew-resize",
+    "s": "ns-resize",
+    "se": "nwse-resize",
+    "paste": "move",
+    "text": "text",
+}
 
 
 @dataclass
@@ -54,7 +67,8 @@ class Canvas(Gtk.DrawingArea):
     __gsignals__ = {
         "color-picked": (GObject.SignalFlags.RUN_FIRST, None, (Gdk.RGBA, int)),
         "resize-preview": (GObject.SignalFlags.RUN_FIRST, None, (int, int)),
-        "paste-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        # A paste or a text box appeared, moved, changed or landed.
+        "floating-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
     def __init__(self, document: Document, colors: ColorState):
@@ -64,6 +78,7 @@ class Canvas(Gtk.DrawingArea):
         self.active_tool: Tool = self.tools["pencil"]
         self.brush_size = 4
         self.fill_shapes = False
+        self.font = DEFAULT_FONT
 
         self._document: Document | None = None
         self._document_handler = 0
@@ -73,6 +88,11 @@ class Canvas(Gtk.DrawingArea):
         self._resize_size: tuple[int, int] | None = None
         self._paste: FloatingPaste | None = None
         self._paste_origin: tuple[float, float] | None = None
+        self._text: TextBox | None = None
+        self._text_origin: tuple[float, float] | None = None
+        self._text_moved = False
+        self._caret_visible = True
+        self._blink_source = 0
 
         # Anchored top-left like the image itself, so dragging a resize grip does
         # not move the widget out from under the pointer.
@@ -93,12 +113,19 @@ class Canvas(Gtk.DrawingArea):
         motion.connect("leave", lambda *_: self._set_cursor(None))
         self.add_controller(motion)
 
-        # Enter and Escape only mean something while a paste is floating, so the
-        # canvas takes focus for the duration rather than claiming accelerators.
+        # Keys only mean something while something is floating over the canvas,
+        # so it takes focus for the duration rather than claiming accelerators.
         self.set_focusable(True)
-        keys = Gtk.EventControllerKey()
-        keys.connect("key-pressed", self._on_key_pressed)
-        self.add_controller(keys)
+        self._keys = Gtk.EventControllerKey()
+        self._keys.connect("key-pressed", self._on_key_pressed)
+        self.add_controller(self._keys)
+
+        # Attached to the key controller only while typing, since an input method
+        # swallows every printable key it is offered — including the single-letter
+        # tool shortcuts.
+        self._im = Gtk.IMMulticontext()
+        self._im.set_client_widget(self)
+        self._im.connect("commit", self._on_im_commit)
 
         drop = Gtk.DropTarget.new(Gdk.Texture, Gdk.DragAction.COPY)
         drop.set_gtypes([Gdk.Texture, Gdk.FileList, Gio.File])
@@ -131,10 +158,12 @@ class Canvas(Gtk.DrawingArea):
             # Follow the drag so the pending outline stays inside the widget.
             width = max(width, self._resize_size[0])
             height = max(height, self._resize_size[1])
-        if self._paste is not None:
+        bounds = self._floating_bounds()
+        if bounds is not None:
             # A screenshot hanging off the edge stays visible before it lands.
-            width = max(width, round(self._paste.x) + self._paste.width)
-            height = max(height, round(self._paste.y) + self._paste.height)
+            float_x, float_y, float_width, float_height = bounds
+            width = max(width, round(float_x) + float_width)
+            height = max(height, round(float_y) + float_height)
         self.set_content_width(width + HANDLE_MARGIN)
         self.set_content_height(height + HANDLE_MARGIN)
 
@@ -145,32 +174,67 @@ class Canvas(Gtk.DrawingArea):
     def supports_fill(self) -> bool:
         return self.active_tool.id in SHAPE_TOOL_IDS
 
-    # Floating paste
+    @property
+    def supports_font(self) -> bool:
+        return self.active_tool.id == TEXT_TOOL_ID
+
+    def set_font(self, font: str) -> None:
+        self.font = font
+        if self._text is not None:
+            self._text.font = font
+            # The font button stole the focus on its way here.
+            self.grab_focus()
+            self._refresh_text()
+
+    # Floating paste and text
 
     @property
-    def has_paste(self) -> bool:
-        return self._paste is not None
+    def has_floating(self) -> bool:
+        return self._paste is not None or self._text is not None
+
+    @property
+    def is_typing(self) -> bool:
+        return self._text is not None
+
+    def _floating_bounds(self) -> tuple[float, float, int, int] | None:
+        """Where the pending paste or text sits, or None when nothing floats."""
+        if self._paste is not None:
+            return self._paste.x, self._paste.y, self._paste.width, self._paste.height
+        if self._text is not None:
+            width, height = self._text.size
+            if width > 0 and height > 0:
+                return self._text.x, self._text.y, width, height
+        return None
 
     @property
     def pending_size(self) -> tuple[int, int]:
         """The canvas size a commit would leave behind, for the size readout."""
         width, height = self._document.width, self._document.height
-        if self._paste is None:
+        bounds = self._floating_bounds()
+        if bounds is None:
             return width, height
+        float_x, float_y, float_width, float_height = bounds
         return (
-            min(max(width, round(self._paste.x) + self._paste.width), MAX_SIZE),
-            min(max(height, round(self._paste.y) + self._paste.height), MAX_SIZE),
+            min(max(width, round(float_x) + float_width), MAX_SIZE),
+            min(max(height, round(float_y) + float_height), MAX_SIZE),
         )
+
+    def commit_floating(self) -> bool:
+        """Land whatever hovers over the canvas — only ever one thing does."""
+        return self.commit_text() or self.commit_paste()
+
+    def cancel_floating(self) -> bool:
+        return self.cancel_text() or self.cancel_paste()
 
     def begin_paste(self, surface: cairo.ImageSurface, x: float = 0, y: float = 0) -> None:
         """Float an image over the canvas until it is committed or discarded."""
-        self.commit_paste()
+        self.commit_floating()
         self._paste = FloatingPaste(surface)
         self._paste.move_to(x, y)
         self.grab_focus()
         self._sync_content_size()
         self.queue_draw()
-        self.emit("paste-changed")
+        self.emit("floating-changed")
 
     def commit_paste(self) -> bool:
         """Stamp the floating image into the document, growing the canvas to fit."""
@@ -180,7 +244,7 @@ class Canvas(Gtk.DrawingArea):
         self._document.paste(paste.surface, round(paste.x), round(paste.y))
         self._sync_content_size()
         self.queue_draw()
-        self.emit("paste-changed")
+        self.emit("floating-changed")
         return True
 
     def cancel_paste(self) -> bool:
@@ -189,10 +253,84 @@ class Canvas(Gtk.DrawingArea):
         self._paste = None
         self._sync_content_size()
         self.queue_draw()
-        self.emit("paste-changed")
+        self.emit("floating-changed")
         return True
 
+    def begin_text(self, x: float, y: float, color: Gdk.RGBA) -> None:
+        """Start a text box at a point on the canvas and take keyboard input."""
+        self.commit_floating()
+        self._text = TextBox(x, y, color, self.font)
+        self.grab_focus()
+        self._keys.set_im_context(self._im)
+        self._im.focus_in()
+        self._start_blink()
+        self._sync_content_size()
+        self.queue_draw()
+        self.emit("floating-changed")
+
+    def commit_text(self) -> bool:
+        """Rasterise the typed text into the image, growing the canvas to fit."""
+        if self._text is None:
+            return False
+        text, self._text = self._text, None
+        surface = text.render_surface()
+        if surface is not None:
+            self._document.paste(surface, round(text.x), round(text.y))
+        self._end_typing()
+        return True
+
+    def cancel_text(self) -> bool:
+        if self._text is None:
+            return False
+        self._text = None
+        self._end_typing()
+        return True
+
+    def _end_typing(self) -> None:
+        self._text_origin = None
+        self._text_moved = False
+        self._stop_blink()
+        self._im.focus_out()
+        self._keys.set_im_context(None)
+        self._sync_content_size()
+        self.queue_draw()
+        self.emit("floating-changed")
+
+    def _refresh_text(self) -> None:
+        # A solid caret reads better than one caught mid-blink while the box is
+        # being worked on.
+        self._caret_visible = True
+        self._sync_content_size()
+        self.queue_draw()
+        self.emit("floating-changed")
+
+    def _start_blink(self) -> None:
+        self._caret_visible = True
+        if self._blink_source == 0:
+            self._blink_source = GLib.timeout_add(CARET_BLINK_MS, self._blink)
+
+    def _blink(self) -> bool:
+        if self._text is None:
+            self._blink_source = 0
+            return GLib.SOURCE_REMOVE
+        self._caret_visible = not self._caret_visible
+        self.queue_draw()
+        return GLib.SOURCE_CONTINUE
+
+    def _stop_blink(self) -> None:
+        if self._blink_source:
+            GLib.source_remove(self._blink_source)
+            self._blink_source = 0
+
+    def _on_im_commit(self, im, text: str) -> None:
+        if self._text is None:
+            return
+        self._text.insert(text)
+        self._refresh_text()
+
     def _on_key_pressed(self, controller, keyval, keycode, state) -> bool:
+        if self._text is not None:
+            return self._on_text_key(keyval, state)
         if self._paste is None:
             return False
         if keyval == Gdk.KEY_Escape:
@@ -200,6 +338,38 @@ class Canvas(Gtk.DrawingArea):
         if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
             return self.commit_paste()
         return False
+
+    def _on_text_key(self, keyval: int, state: Gdk.ModifierType) -> bool:
+        """The editing keys; typed characters arrive through the input method."""
+        text = self._text
+        if keyval == Gdk.KEY_Escape:
+            return self.cancel_text()
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_ISO_Enter):
+            # Return is a new line inside a text box, so landing it takes Ctrl.
+            if state & Gdk.ModifierType.CONTROL_MASK:
+                return self.commit_text()
+            text.insert("\n")
+        elif keyval == Gdk.KEY_BackSpace:
+            text.backspace()
+        elif keyval == Gdk.KEY_Delete:
+            text.delete()
+        elif keyval in (Gdk.KEY_Left, Gdk.KEY_KP_Left):
+            text.move_caret(-1)
+        elif keyval in (Gdk.KEY_Right, Gdk.KEY_KP_Right):
+            text.move_caret(1)
+        elif keyval in (Gdk.KEY_Up, Gdk.KEY_KP_Up):
+            text.move_caret_line(-1)
+        elif keyval in (Gdk.KEY_Down, Gdk.KEY_KP_Down):
+            text.move_caret_line(1)
+        elif keyval in (Gdk.KEY_Home, Gdk.KEY_KP_Home):
+            text.move_caret_to_edge(False)
+        elif keyval in (Gdk.KEY_End, Gdk.KEY_KP_End):
+            text.move_caret_to_edge(True)
+        else:
+            # Ctrl+Z, Ctrl+S and the rest still belong to the window.
+            return False
+        self._refresh_text()
+        return True
 
     def _on_drop(self, target, value, x: float, y: float) -> bool:
         if isinstance(value, Gdk.FileList):
@@ -222,8 +392,8 @@ class Canvas(Gtk.DrawingArea):
     # Resize grips
 
     def _handles(self) -> dict[str, tuple[float, float]]:
-        if self._paste is not None:
-            # The paste owns the pointer until it lands.
+        if self.has_floating:
+            # The paste or text box owns the pointer until it lands.
             return {}
         width, height = self._resize_size or (self._document.width, self._document.height)
         return {
@@ -248,6 +418,9 @@ class Canvas(Gtk.DrawingArea):
         if self._paste is not None and self._paste.contains(x, y):
             self._set_cursor("paste")
             return
+        if self._text is not None and self._text.contains(x, y, TEXT_PADDING):
+            self._set_cursor("text")
+            return
         self._set_cursor(self._handle_at(x, y))
 
     def _resized_to(self, x: float, y: float) -> tuple[int, int]:
@@ -269,10 +442,21 @@ class Canvas(Gtk.DrawingArea):
             size=self.brush_size,
             fill_shapes=self.fill_shapes,
             pick_color=lambda color, btn: self.emit("color-picked", color, btn),
+            begin_text=self.begin_text,
         )
 
     def _on_drag_begin(self, gesture, start_x, start_y):
         self._drag_origin = (start_x, start_y)
+
+        if self._text is not None:
+            if self._text.contains(start_x, start_y, TEXT_PADDING):
+                self._text_origin = (self._text.x, self._text.y)
+                self._text_moved = False
+                self.grab_focus()
+            else:
+                # Clicking away lands the text; the click itself does not draw.
+                self.commit_text()
+            return
 
         if self._paste is not None:
             if self._paste.contains(start_x, start_y):
@@ -302,11 +486,20 @@ class Canvas(Gtk.DrawingArea):
             return
         x, y = self._drag_origin[0] + offset_x, self._drag_origin[1] + offset_y
 
+        if self._text_origin is not None:
+            if not self._text_moved and max(abs(offset_x), abs(offset_y)) < MOVE_THRESHOLD:
+                # Still small enough to be the wobble of a click placing the caret.
+                return
+            self._text_moved = True
+            self._text.move_to(self._text_origin[0] + offset_x, self._text_origin[1] + offset_y)
+            self._refresh_text()
+            return
+
         if self._paste_origin is not None:
             self._paste.move_to(self._paste_origin[0] + offset_x, self._paste_origin[1] + offset_y)
             self._sync_content_size()
             self.queue_draw()
-            self.emit("paste-changed")
+            self.emit("floating-changed")
             return
 
         if self._resize_handle is not None:
@@ -326,6 +519,16 @@ class Canvas(Gtk.DrawingArea):
         if self._drag_origin is None:
             return
         x, y = self._drag_origin[0] + offset_x, self._drag_origin[1] + offset_y
+
+        if self._text_origin is not None:
+            if not self._text_moved:
+                # A click rather than a drag: put the caret where it landed.
+                self._text.caret_at(x, y)
+            self._text_origin = None
+            self._text_moved = False
+            self._drag_origin = None
+            self._refresh_text()
+            return
 
         if self._paste_origin is not None or self._paste is not None:
             # A floating paste stays floating; the drag only moved it.
@@ -384,11 +587,51 @@ class Canvas(Gtk.DrawingArea):
             self._draw_resize_preview(cr, accent, image_width, image_height)
         if self._paste is not None:
             self._draw_paste(cr, accent, image_width, image_height)
+        if self._text is not None:
+            self._draw_text(cr, accent, image_width, image_height)
         self._draw_handles(cr, accent)
 
     @staticmethod
     def _accent() -> Gdk.RGBA:
         return Adw.StyleManager.get_default().get_accent_color_rgba()
+
+    @staticmethod
+    def _draw_dashed_rect(
+        cr: cairo.Context, accent: Gdk.RGBA, x: float, y: float, width: float, height: float
+    ) -> None:
+        cr.save()
+        cr.set_source_rgba(accent.red, accent.green, accent.blue, 1.0)
+        cr.set_line_width(1)
+        cr.set_dash([4, 3])
+        cr.rectangle(x + 0.5, y + 0.5, width - 1, height - 1)
+        cr.stroke()
+        cr.restore()
+
+    @staticmethod
+    def _draw_overhang(
+        cr: cairo.Context,
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+        image_width: int,
+        image_height: int,
+    ) -> None:
+        """Fill the part of a rectangle that hangs off the image with white.
+
+        That is the colour the canvas grows with, so the preview of a paste or a
+        text box matches what committing it produces.
+        """
+        cr.save()
+        cr.rectangle(x, y, width, height)
+        cr.clip()
+        # Even-odd over both rectangles leaves exactly the overhanging part.
+        cr.set_fill_rule(cairo.FILL_RULE_EVEN_ODD)
+        cr.rectangle(x, y, width, height)
+        cr.rectangle(0, 0, image_width, image_height)
+        cr.set_source_rgb(1, 1, 1)
+        cr.fill()
+        cr.restore()
 
     def _draw_resize_preview(
         self, cr: cairo.Context, accent: Gdk.RGBA, image_width: int, image_height: int
@@ -402,43 +645,53 @@ class Canvas(Gtk.DrawingArea):
         cr.rectangle(0, 0, width, height)
         cr.set_source_rgba(accent.red, accent.green, accent.blue, 0.25)
         cr.fill()
-
-        cr.set_source_rgba(accent.red, accent.green, accent.blue, 1.0)
-        cr.set_line_width(1)
-        cr.set_dash([4, 3])
-        cr.rectangle(0.5, 0.5, width - 1, height - 1)
-        cr.stroke()
         cr.restore()
+
+        self._draw_dashed_rect(cr, accent, 0, 0, width, height)
 
     def _draw_paste(
         self, cr: cairo.Context, accent: Gdk.RGBA, image_width: int, image_height: int
     ) -> None:
         paste = self._paste
+        self._draw_overhang(
+            cr, paste.x, paste.y, paste.width, paste.height, image_width, image_height
+        )
+
         cr.save()
         cr.rectangle(paste.x, paste.y, paste.width, paste.height)
         cr.clip()
-
-        # Where the paste overhangs the image, show the white the canvas will grow
-        # with, so the preview matches what committing produces.
-        cr.save()
-        cr.set_fill_rule(cairo.FILL_RULE_EVEN_ODD)
-        cr.rectangle(paste.x, paste.y, paste.width, paste.height)
-        cr.rectangle(0, 0, image_width, image_height)
-        cr.set_source_rgb(1, 1, 1)
-        cr.fill()
-        cr.restore()
-
         cr.set_source_surface(paste.surface, paste.x, paste.y)
         cr.paint()
         cr.restore()
 
-        cr.save()
-        cr.set_source_rgba(accent.red, accent.green, accent.blue, 1.0)
-        cr.set_line_width(1)
-        cr.set_dash([4, 3])
-        cr.rectangle(paste.x + 0.5, paste.y + 0.5, paste.width - 1, paste.height - 1)
-        cr.stroke()
-        cr.restore()
+        self._draw_dashed_rect(cr, accent, paste.x, paste.y, paste.width, paste.height)
+
+    def _draw_text(
+        self, cr: cairo.Context, accent: Gdk.RGBA, image_width: int, image_height: int
+    ) -> None:
+        text = self._text
+        width, height = text.size
+        if width > 0 and height > 0:
+            self._draw_overhang(cr, text.x, text.y, width, height, image_width, image_height)
+            text.render(cr)
+
+        # The outline sits outside the glyphs, and outside what gets rasterised.
+        self._draw_dashed_rect(
+            cr,
+            accent,
+            text.x - TEXT_PADDING,
+            text.y - TEXT_PADDING,
+            width + 2 * TEXT_PADDING,
+            height + 2 * TEXT_PADDING,
+        )
+
+        if self._caret_visible:
+            caret_x, caret_y, caret_height = text.caret_rect()
+            cr.set_source_rgba(
+                text.color.red, text.color.green, text.color.blue, text.color.alpha
+            )
+            cr.rectangle(caret_x, caret_y, 1, caret_height)
+            cr.fill()
 
     def _draw_handles(self, cr: cairo.Context, accent: Gdk.RGBA) -> None:
         half = HANDLE_SIZE / 2

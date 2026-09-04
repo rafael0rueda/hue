@@ -17,6 +17,7 @@
     <ul>
       <li>Pencil, brush and eraser</li>
       <li>Line, rectangle and ellipse, filled or outlined</li>
+      <li>Text in any font installed on the system</li>
       <li>Flood fill and colour picker</li>
       <li>Undo and redo history</li>
     </ul>

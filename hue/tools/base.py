@@ -22,6 +22,7 @@ class ToolContext:
     size: int
     fill_shapes: bool
     pick_color: Callable[[Gdk.RGBA, int], None]
+    begin_text: Callable[[float, float, Gdk.RGBA], None]
 
     @property
     def color(self) -> Gdk.RGBA:
