@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Rafael Rueda
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 project('hue',
   version: '0.1.0',
   meson_version: '>= 0.62.0',

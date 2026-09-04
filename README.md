@@ -92,3 +92,9 @@ with no configuration. The only custom styling lives in `data/style.css`, writte
 against libadwaita's named colours (`@accent_bg_color`, `@sidebar_bg_color`, …) rather
 than fixed values, so re-theming the app means editing that one file. Tool icons are
 symbolic SVGs in `data/icons/`, so they recolour with the theme too.
+
+## Licence
+
+Hue is free software under the GNU General Public License, version 3 or later; the
+full text is in [LICENSE](LICENSE). Source and data files carry `SPDX-License-Identifier`
+headers. The AppStream metainfo file is CC0-1.0, as AppStream requires of metadata.
