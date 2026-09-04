@@ -37,13 +37,13 @@ This installs the `hue` launcher, the desktop entry, the app icon and the app da
 
 ## Flatpak
 
-`flatpak/io.github.rafa.Hue.json` builds against `org.gnome.Platform` 50. It needs
+`flatpak/io.github.rafael0rueda.Hue.json` builds against `org.gnome.Platform` 50. It needs
 `flatpak-builder` and the GNOME SDK, which are not installed by default:
 
 ```bash
 sudo dnf install flatpak-builder
 flatpak install flathub org.gnome.Sdk//50 org.gnome.Platform//50
-flatpak-builder --user --install --force-clean build flatpak/io.github.rafa.Hue.json
+flatpak-builder --user --install --force-clean build flatpak/io.github.rafael0rueda.Hue.json
 ```
 
 The manifest deliberately grants no network permission — the app has no reason to
@@ -92,9 +92,3 @@ with no configuration. The only custom styling lives in `data/style.css`, writte
 against libadwaita's named colours (`@accent_bg_color`, `@sidebar_bg_color`, …) rather
 than fixed values, so re-theming the app means editing that one file. Tool icons are
 symbolic SVGs in `data/icons/`, so they recolour with the theme too.
-
-## Before publishing
-
-The application ID `io.github.rafa.Hue` is a placeholder. Rename it (in `data/`,
-`flatpak/` and `hue/__init__.py`) and add a `<url type="homepage">` to the metainfo
-file before submitting anywhere.

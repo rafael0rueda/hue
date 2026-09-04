@@ -1,4 +1,4 @@
-app_id = 'io.github.rafa.Hue'
+app_id = 'io.github.rafael0rueda.Hue'
 
 install_data(app_id + '.desktop', install_dir: datadir / 'applications')
 install_data(app_id + '.metainfo.xml', install_dir: datadir / 'metainfo')

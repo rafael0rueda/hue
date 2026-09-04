@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.rafa.Hue</id>
+  <id>io.github.rafael0rueda.Hue</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <name>Hue</name>
@@ -23,10 +23,12 @@
       image on your own machine.
     </p>
   </description>
-  <developer id="io.github.rafa">
-    <name>Hue contributors</name>
+  <developer id="io.github.rafael0rueda">
+    <name>Rafael Rueda</name>
   </developer>
-  <launchable type="desktop-id">io.github.rafa.Hue.desktop</launchable>
+  <url type="homepage">https://github.com/rafael0rueda/hue</url>
+  <url type="bugtracker">https://github.com/rafael0rueda/hue/issues</url>
+  <launchable type="desktop-id">io.github.rafael0rueda.Hue.desktop</launchable>
   <content_rating type="oars-1.1"/>
   <categories>
     <category>Graphics</category>

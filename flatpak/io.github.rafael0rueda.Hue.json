@@ -1,5 +1,5 @@
 {
-  "app-id": "io.github.rafa.Hue",
+  "app-id": "io.github.rafael0rueda.Hue",
   "runtime": "org.gnome.Platform",
   "runtime-version": "50",
   "sdk": "org.gnome.Sdk",
