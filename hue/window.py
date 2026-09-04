@@ -3,10 +3,11 @@
 
 from __future__ import annotations
 
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
 from . import APP_NAME
 from .canvas import Canvas
+from .clipboard import has_image, read_image, texture_from_surface
 from .color import ColorBar, ColorState
 from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_SIZE, Document, new_surface
 from .file_io import image_filters, load_document, save_document
@@ -34,6 +35,7 @@ class HueWindow(Adw.ApplicationWindow):
         self.canvas = Canvas(document or Document(), self.colors)
         self.canvas.connect("color-picked", self._on_color_picked)
         self.canvas.connect("resize-preview", self._on_resize_preview)
+        self.canvas.connect("paste-changed", lambda *_: self._sync_state())
         self._closing = False
 
         self._title = Adw.WindowTitle(title=APP_NAME)
@@ -77,6 +79,10 @@ class HueWindow(Adw.ApplicationWindow):
             history.append(button)
 
         menu = Gio.Menu()
+        edit_section = Gio.Menu()
+        edit_section.append("Copy", "win.copy")
+        edit_section.append("Paste", "win.paste")
+        menu.append_section(None, edit_section)
         file_section = Gio.Menu()
         file_section.append("Save As…", "win.save-as")
         file_section.append("Canvas Size…", "win.resize")
@@ -169,8 +175,10 @@ class HueWindow(Adw.ApplicationWindow):
             "open": self._action_open,
             "save": lambda *_: self._save(),
             "save-as": lambda *_: self._save_as(),
-            "undo": lambda *_: self.canvas.document.undo(),
+            "undo": self._action_undo,
             "redo": lambda *_: self.canvas.document.redo(),
+            "copy": lambda *_: self._copy(),
+            "paste": lambda *_: self._paste(),
             "swap-colors": lambda *_: self.colors.swap(),
             "resize": lambda *_: self._prompt_canvas_size(),
         }
@@ -191,6 +199,8 @@ class HueWindow(Adw.ApplicationWindow):
             "win.open": ["<Control>o"],
             "win.save": ["<Control>s"],
             "win.save-as": ["<Control><Shift>s"],
+            "win.copy": ["<Control>c"],
+            "win.paste": ["<Control>v"],
             "win.undo": ["<Control>z"],
             "win.redo": ["<Control><Shift>z", "<Control>y"],
             "win.swap-colors": ["x"],
@@ -202,7 +212,12 @@ class HueWindow(Adw.ApplicationWindow):
         for action_name, keys in accels.items():
             app.set_accels_for_action(action_name, keys)
 
+        clipboard = self.get_clipboard()
+        clipboard.connect("changed", lambda *_: self._sync_paste_action())
+        self._sync_paste_action()
+
     def _on_tool_changed(self, action, value: GLib.Variant) -> None:
+        self.canvas.commit_paste()
         action.set_state(value)
         self.canvas.select_tool(value.get_string())
         self._fill_check.set_sensitive(self.canvas.supports_fill)
@@ -238,18 +253,44 @@ class HueWindow(Adw.ApplicationWindow):
         document = self.canvas.document
         marker = " •" if document.modified else ""
         self._title.set_title(f"{document.title}{marker}")
-        self._canvas_size_label.set_label(f"{document.width} × {document.height} px")
-        self.lookup_action("undo").set_enabled(document.can_undo)
+        # While a paste floats this counts out the size committing would leave.
+        width, height = self.canvas.pending_size
+        self._canvas_size_label.set_label(f"{width} × {height} px")
+        # Undo also takes back a paste that has not been stamped down yet.
+        self.lookup_action("undo").set_enabled(document.can_undo or self.canvas.has_paste)
         self.lookup_action("redo").set_enabled(document.can_redo)
 
     def _on_resize_preview(self, canvas, width: int, height: int) -> None:
         """Count out the pending size while a resize grip is being dragged."""
         self._canvas_size_label.set_label(f"{width} × {height} px")
 
+    # Clipboard
+
+    def _sync_paste_action(self) -> None:
+        self.lookup_action("paste").set_enabled(has_image(self.get_clipboard()))
+
+    def _copy(self) -> None:
+        self.canvas.commit_paste()
+        document = self.canvas.document
+        texture = texture_from_surface(document.surface)
+        self.get_clipboard().set_content(Gdk.ContentProvider.new_for_value(texture))
+        # The clipboard's own notification is asynchronous; do not wait for it.
+        self._sync_paste_action()
+        self._toast("Copied to clipboard")
+
+    def _paste(self) -> None:
+        read_image(self.get_clipboard(), self.canvas.begin_paste, self._toast)
+
+    def _action_undo(self, *_) -> None:
+        # A floating paste has not been stamped down yet, so undo just drops it.
+        if not self.canvas.cancel_paste():
+            self.canvas.document.undo()
+
     def _toast(self, message: str) -> None:
         self.toasts.add_toast(Adw.Toast(title=message))
 
     def _confirm_discard(self, proceed) -> None:
+        self.canvas.commit_paste()
         document = self.canvas.document
         if not document.modified:
             proceed()
@@ -325,6 +366,7 @@ class HueWindow(Adw.ApplicationWindow):
         )
 
     def _prompt_canvas_size(self) -> None:
+        self.canvas.commit_paste()
         document = self.canvas.document
 
         self._prompt_size(
@@ -355,6 +397,8 @@ class HueWindow(Adw.ApplicationWindow):
         dialog.open(self, None, on_done)
 
     def _save(self, then=None) -> None:
+        # What gets written should match what is on screen.
+        self.canvas.commit_paste()
         document = self.canvas.document
         if document.file is None:
             self._save_as(then)
@@ -362,6 +406,7 @@ class HueWindow(Adw.ApplicationWindow):
         self._write(document.file, then)
 
     def _save_as(self, then=None) -> None:
+        self.canvas.commit_paste()
         document = self.canvas.document
         dialog = Gtk.FileDialog(title="Save Image", filters=image_filters())
         dialog.set_initial_name(document.title if document.file else "Untitled.png")

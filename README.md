@@ -70,6 +70,8 @@ colour, right click the secondary. `X` swaps them.
 | --------------------------- | ----------------------------------------------- |
 | New / Open / Save / Save As | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` / `Ctrl+Shift+S` |
 | Canvas size                 | `Ctrl+E`                                        |
+| Copy / Paste                | `Ctrl+C` / `Ctrl+V`                             |
+| Land / discard a paste      | `Enter` / `Esc`                                 |
 | Undo / Redo                 | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`)         |
 | Quit                        | `Ctrl+Q`                                        |
 
@@ -84,6 +86,24 @@ pointer, and the change is applied when you let go. For an exact size, click tha
 readout or use **Canvas Size…** (`Ctrl+E`) in the main menu. Either way the image keeps
 its top-left corner — growing the canvas adds white, shrinking it crops — and the
 resize can be undone with `Ctrl+Z`.
+
+## Pasting images
+
+`Ctrl+V` drops whatever image is on the clipboard — a screenshot, most usefully — onto
+the canvas, where it floats inside a dashed outline until you decide where it goes.
+Drag it into place, then press `Enter` or click anywhere outside it to stamp it down;
+`Esc` or `Ctrl+Z` throws it away instead. Dragging an image file or an image from
+another application onto the canvas does the same thing, and an image copied as a file
+in Files pastes just as well as one copied as pixels.
+
+If the pasted image runs off the right or bottom edge — a full-screen screenshot on a
+smaller canvas usually does — the canvas grows to fit it when the paste lands, so
+nothing is cropped. The size readout in the bottom bar counts out the size you are
+heading for while the paste is still floating, and one `Ctrl+Z` afterwards takes back
+both the pixels and the new canvas size.
+
+`Ctrl+C` copies the whole canvas the other way, so it can be pasted into other
+applications.
 
 ## Theming
 

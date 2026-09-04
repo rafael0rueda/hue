@@ -6,6 +6,7 @@ python.install_sources(
     '__init__.py',
     '__main__.py',
     'canvas.py',
+    'clipboard.py',
     'color.py',
     'document.py',
     'file_io.py',

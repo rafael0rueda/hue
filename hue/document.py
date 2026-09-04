@@ -21,6 +21,16 @@ def new_surface(width: int, height: int, fill=(1.0, 1.0, 1.0, 1.0)) -> cairo.Ima
     return surface
 
 
+def surface_from_pixbuf(pixbuf: GdkPixbuf.Pixbuf) -> cairo.ImageSurface:
+    """Copy a pixbuf into a surface Hue can draw on."""
+    surface = new_surface(pixbuf.get_width(), pixbuf.get_height(), (0, 0, 0, 0))
+    cr = cairo.Context(surface)
+    Gdk.cairo_set_source_pixbuf(cr, pixbuf, 0, 0)
+    cr.set_operator(cairo.OPERATOR_SOURCE)
+    cr.paint()
+    return surface
+
+
 def copy_surface(src: cairo.ImageSurface) -> cairo.ImageSurface:
     dst = cairo.ImageSurface(cairo.FORMAT_ARGB32, src.get_width(), src.get_height())
     cr = cairo.Context(dst)
@@ -91,6 +101,18 @@ class Document(GObject.Object):
         self.surface = self._redo.pop()
         self.commit_change()
 
+    def _resized_surface(
+        self, width: int, height: int, fill=(1.0, 1.0, 1.0, 1.0)
+    ) -> cairo.ImageSurface:
+        """The current image on a differently sized canvas, anchored top-left."""
+        surface = new_surface(width, height, fill)
+        cr = cairo.Context(surface)
+        cr.set_operator(cairo.OPERATOR_SOURCE)
+        cr.set_source_surface(self.surface, 0, 0)
+        cr.rectangle(0, 0, min(width, self.width), min(height, self.height))
+        cr.fill()
+        return surface
+
     def resize(self, width: int, height: int, fill=(1.0, 1.0, 1.0, 1.0)) -> None:
         """Grow or crop the canvas, keeping the existing pixels anchored top-left."""
         width = max(1, min(int(width), MAX_SIZE))
@@ -99,23 +121,30 @@ class Document(GObject.Object):
             return
 
         self.begin_change()
-        surface = new_surface(width, height, fill)
-        cr = cairo.Context(surface)
-        cr.set_operator(cairo.OPERATOR_SOURCE)
-        cr.set_source_surface(self.surface, 0, 0)
-        cr.rectangle(0, 0, min(width, self.width), min(height, self.height))
-        cr.fill()
-        self.surface = surface
+        self.surface = self._resized_surface(width, height, fill)
+        self.commit_change()
+
+    def paste(self, image: cairo.ImageSurface, x: int = 0, y: int = 0) -> None:
+        """Stamp an image onto the canvas, growing it if the image runs off the edge.
+
+        The growth and the stamp share one undo entry, so a single undo takes back
+        both the new pixels and the new canvas size.
+        """
+        x, y = max(0, int(x)), max(0, int(y))
+        width = min(max(self.width, x + image.get_width()), MAX_SIZE)
+        height = min(max(self.height, y + image.get_height()), MAX_SIZE)
+
+        self.begin_change()
+        if (width, height) != (self.width, self.height):
+            self.surface = self._resized_surface(width, height)
+        cr = cairo.Context(self.surface)
+        cr.set_source_surface(image, x, y)
+        cr.paint()
         self.commit_change()
 
     @classmethod
     def from_pixbuf(cls, pixbuf: GdkPixbuf.Pixbuf) -> "Document":
-        surface = new_surface(pixbuf.get_width(), pixbuf.get_height(), (0, 0, 0, 0))
-        cr = cairo.Context(surface)
-        Gdk.cairo_set_source_pixbuf(cr, pixbuf, 0, 0)
-        cr.set_operator(cairo.OPERATOR_SOURCE)
-        cr.paint()
-        return cls(surface)
+        return cls(surface_from_pixbuf(pixbuf))
 
     def to_pixbuf(self) -> GdkPixbuf.Pixbuf:
         self.surface.flush()
