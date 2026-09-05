@@ -62,6 +62,7 @@ reach the network, and the sandbox enforces that.
 | Text          | `T` | Type onto the canvas in any installed font   |
 | Fill          | `F` | Flood fill with a small colour tolerance     |
 | Colour picker | `K` | Picks the colour under the cursor            |
+| Select        | `S` | Rectangle to move, copy or cut               |
 
 Left click draws with the primary colour, right click with the secondary one. Both
 colour swatches in the bottom bar work the same way: left click sets the primary
@@ -71,8 +72,9 @@ colour, right click the secondary. `X` swaps them.
 | --------------------------- | ----------------------------------------------- |
 | New / Open / Save / Save As | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` / `Ctrl+Shift+S` |
 | Canvas size                 | `Ctrl+E`                                        |
-| Copy / Paste                | `Ctrl+C` / `Ctrl+V`                             |
+| Cut / Copy / Paste          | `Ctrl+X` / `Ctrl+C` / `Ctrl+V`                  |
 | Land / discard a paste      | `Enter` / `Esc`                                 |
+| Drop / clear a selection    | `Esc` / `Delete`                                |
 | Land / discard typed text   | `Ctrl+Enter` / `Esc`                            |
 | Undo / Redo                 | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`)         |
 | Quit                        | `Ctrl+Q`                                        |
@@ -106,6 +108,21 @@ both the pixels and the new canvas size.
 
 `Ctrl+C` copies the whole canvas the other way, so it can be pasted into other
 applications.
+
+## Selecting, moving and copying
+
+Pick the select tool (`S`) and drag a rectangle over the part of the image you want; a
+dashed outline marks it out. Dragging from inside that outline lifts those pixels and
+carries them somewhere else — hold `Ctrl` as you start the drag to leave a copy behind
+instead of moving them. The pixels float exactly like a paste does, so `Enter` or a
+click outside lands them, `Esc` or `Ctrl+Z` puts them back, and moving them past the
+right or bottom edge grows the canvas. A move leaves the secondary colour behind, the
+same colour the eraser paints with, and the whole move — the hole and the pixels in
+their new place — is a single `Ctrl+Z`.
+
+With a selection standing, `Ctrl+C` copies just that rectangle rather than the whole
+canvas and `Ctrl+X` cuts it out; `Delete` clears it without touching the clipboard.
+`Esc`, a click outside, or switching to another tool drops the selection again.
 
 ## Adding text
 

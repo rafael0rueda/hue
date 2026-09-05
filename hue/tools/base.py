@@ -23,6 +23,7 @@ class ToolContext:
     fill_shapes: bool
     pick_color: Callable[[Gdk.RGBA, int], None]
     begin_text: Callable[[float, float, Gdk.RGBA], None]
+    select_region: Callable[[float, float, float, float], None]
 
     @property
     def color(self) -> Gdk.RGBA:
@@ -35,6 +36,19 @@ class ToolContext:
 
 def set_source(cr: cairo.Context, color: Gdk.RGBA) -> None:
     cr.set_source_rgba(color.red, color.green, color.blue, color.alpha)
+
+
+def draw_marquee(cr: cairo.Context, x: float, y: float, width: float, height: float) -> None:
+    """The dashed outline of a selection: black over white, so it reads on any artwork."""
+    cr.save()
+    cr.set_line_width(1)
+    cr.rectangle(x + 0.5, y + 0.5, max(width - 1, 0), max(height - 1, 0))
+    cr.set_source_rgb(1, 1, 1)
+    cr.stroke_preserve()
+    cr.set_dash([4, 4])
+    cr.set_source_rgb(0, 0, 0)
+    cr.stroke()
+    cr.restore()
 
 
 class Tool:

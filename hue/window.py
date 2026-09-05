@@ -27,6 +27,7 @@ TOOL_ACCELS = {
     "text": "t",
     "fill": "f",
     "picker": "k",
+    "select": "s",
 }
 
 
@@ -41,6 +42,7 @@ class HueWindow(Adw.ApplicationWindow):
         self.canvas.connect("color-picked", self._on_color_picked)
         self.canvas.connect("resize-preview", self._on_resize_preview)
         self.canvas.connect("floating-changed", self._on_floating_changed)
+        self.canvas.connect("selection-changed", lambda *_: self._sync_selection_actions())
         self._closing = False
         self._typing = False
         self._syncing_size = False
@@ -87,6 +89,7 @@ class HueWindow(Adw.ApplicationWindow):
 
         menu = Gio.Menu()
         edit_section = Gio.Menu()
+        edit_section.append("Cut", "win.cut")
         edit_section.append("Copy", "win.copy")
         edit_section.append("Paste", "win.paste")
         menu.append_section(None, edit_section)
@@ -200,6 +203,7 @@ class HueWindow(Adw.ApplicationWindow):
             "save-as": lambda *_: self._save_as(),
             "undo": self._action_undo,
             "redo": lambda *_: self.canvas.document.redo(),
+            "cut": lambda *_: self._cut(),
             "copy": lambda *_: self._copy(),
             "paste": lambda *_: self._paste(),
             "swap-colors": lambda *_: self.colors.swap(),
@@ -222,6 +226,7 @@ class HueWindow(Adw.ApplicationWindow):
             "win.open": ["<Control>o"],
             "win.save": ["<Control>s"],
             "win.save-as": ["<Control><Shift>s"],
+            "win.cut": ["<Control>x"],
             "win.copy": ["<Control>c"],
             "win.paste": ["<Control>v"],
             "win.undo": ["<Control>z"],
@@ -245,6 +250,7 @@ class HueWindow(Adw.ApplicationWindow):
         clipboard = self.get_clipboard()
         clipboard.connect("changed", lambda *_: self._sync_paste_action())
         self._sync_paste_action()
+        self._sync_selection_actions()
 
     def _on_tool_changed(self, action, value: GLib.Variant) -> None:
         self.canvas.commit_floating()
@@ -352,14 +358,31 @@ class HueWindow(Adw.ApplicationWindow):
     def _sync_paste_action(self) -> None:
         self.lookup_action("paste").set_enabled(has_image(self.get_clipboard()))
 
-    def _copy(self) -> None:
-        self.canvas.commit_floating()
-        document = self.canvas.document
-        texture = texture_from_surface(document.surface)
+    def _sync_selection_actions(self) -> None:
+        # There is nothing to cut out of the canvas without a selection.
+        self.lookup_action("cut").set_enabled(self.canvas.has_selection)
+
+    def _put_on_clipboard(self, surface) -> None:
+        texture = texture_from_surface(surface)
         self.get_clipboard().set_content(Gdk.ContentProvider.new_for_value(texture))
         # The clipboard's own notification is asynchronous; do not wait for it.
         self._sync_paste_action()
-        self._toast("Copied to clipboard")
+
+    def _copy(self) -> None:
+        self.canvas.commit_floating()
+        # A selection narrows the copy down to itself; otherwise it is the canvas.
+        selection = self.canvas.selection_surface()
+        self._put_on_clipboard(selection or self.canvas.document.surface)
+        self._toast("Copied the selection" if selection else "Copied to clipboard")
+
+    def _cut(self) -> None:
+        self.canvas.commit_floating()
+        selection = self.canvas.selection_surface()
+        if selection is None:
+            return
+        self._put_on_clipboard(selection)
+        self.canvas.delete_selection()
+        self._toast("Cut the selection")
 
     def _paste(self) -> None:
         read_image(self.get_clipboard(), self.canvas.begin_paste, self._toast)

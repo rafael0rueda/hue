@@ -10,9 +10,17 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk
 
 from .clipboard import surface_from_file, surface_from_texture
 from .color import ColorState
-from .document import MAX_SIZE, Document
+from .document import MAX_SIZE, Document, crop_surface
 from .text import DEFAULT_FONT, TextBox
-from .tools import SHAPE_TOOL_IDS, TEXT_TOOL_ID, Tool, ToolContext, create_tools
+from .tools import (
+    SELECT_TOOL_ID,
+    SHAPE_TOOL_IDS,
+    TEXT_TOOL_ID,
+    Tool,
+    ToolContext,
+    create_tools,
+    draw_marquee,
+)
 
 CHECKER_SIZE = 8
 HANDLE_SIZE = 10
@@ -32,6 +40,7 @@ HANDLE_CURSORS = {
     "se": "nwse-resize",
     "paste": "move",
     "text": "text",
+    "selection": "move",
 }
 
 
@@ -42,6 +51,10 @@ class FloatingPaste:
     surface: cairo.ImageSurface
     x: float = 0.0
     y: float = 0.0
+    # Where a lifted selection came from, painted over when the move lands so
+    # that vacating the old place and filling the new one is one undo step.
+    source: tuple[int, int, int, int] | None = None
+    fill: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
 
     @property
     def width(self) -> int:
@@ -61,6 +74,39 @@ class FloatingPaste:
         return self.x <= x <= self.x + self.width and self.y <= y <= self.y + self.height
 
 
+@dataclass
+class Selection:
+    """A rectangle of the image, picked out to be moved, copied or deleted."""
+
+    x: int
+    y: int
+    width: int
+    height: int
+
+    @classmethod
+    def from_rect(
+        cls, x: float, y: float, width: float, height: float, image_width: int, image_height: int
+    ) -> "Selection | None":
+        """A selection clipped to the image, or None when nothing is left of it."""
+        left = max(0, round(x))
+        top = max(0, round(y))
+        right = min(image_width, round(x + width))
+        bottom = min(image_height, round(y + height))
+        if right <= left or bottom <= top:
+            return None
+        return cls(left, top, right - left, bottom - top)
+
+    @property
+    def rect(self) -> tuple[int, int, int, int]:
+        return self.x, self.y, self.width, self.height
+
+    def contains(self, x: float, y: float) -> bool:
+        return self.x <= x <= self.x + self.width and self.y <= y <= self.y + self.height
+
+    def clamped(self, image_width: int, image_height: int) -> "Selection | None":
+        return self.from_rect(self.x, self.y, self.width, self.height, image_width, image_height)
+
+
 class Canvas(Gtk.DrawingArea):
     """Displays the document and routes pointer input to the active tool."""
 
@@ -69,6 +115,8 @@ class Canvas(Gtk.DrawingArea):
         "resize-preview": (GObject.SignalFlags.RUN_FIRST, None, (int, int)),
         # A paste or a text box appeared, moved, changed or landed.
         "floating-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        # A selection was made, moved out of, or dropped.
+        "selection-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
     def __init__(self, document: Document, colors: ColorState):
@@ -91,6 +139,7 @@ class Canvas(Gtk.DrawingArea):
         self._text: TextBox | None = None
         self._text_origin: tuple[float, float] | None = None
         self._text_moved = False
+        self._selection: Selection | None = None
         self._caret_visible = True
         self._blink_source = 0
 
@@ -149,6 +198,9 @@ class Canvas(Gtk.DrawingArea):
 
     def _on_content_changed(self, *_) -> None:
         # Undo/redo and resizing can swap in a differently sized surface.
+        if self._selection is not None:
+            document = self._document
+            self.set_selection(self._selection.clamped(document.width, document.height))
         self._sync_content_size()
         self.queue_draw()
 
@@ -169,6 +221,9 @@ class Canvas(Gtk.DrawingArea):
 
     def select_tool(self, tool_id: str) -> None:
         self.active_tool = self.tools[tool_id]
+        if tool_id != SELECT_TOOL_ID:
+            # A selection is only ever reachable through its own tool.
+            self.set_selection(None)
 
     @property
     def supports_fill(self) -> bool:
@@ -185,6 +240,66 @@ class Canvas(Gtk.DrawingArea):
             # The font button stole the focus on its way here.
             self.grab_focus()
             self._refresh_text()
+
+    # Selection
+
+    @property
+    def has_selection(self) -> bool:
+        return self._selection is not None
+
+    def set_selection(self, selection: Selection | None) -> None:
+        if selection == self._selection:
+            return
+        self._selection = selection
+        self.queue_draw()
+        self.emit("selection-changed")
+
+    def select_region(self, x: float, y: float, width: float, height: float) -> None:
+        """Take the rectangle the select tool just dragged out."""
+        self.set_selection(
+            Selection.from_rect(x, y, width, height, self._document.width, self._document.height)
+        )
+        if self._selection is not None:
+            # Esc and Delete belong to the selection from here on.
+            self.grab_focus()
+
+    def clear_selection(self) -> bool:
+        if self._selection is None:
+            return False
+        self.set_selection(None)
+        return True
+
+    def selection_surface(self) -> cairo.ImageSurface | None:
+        """A copy of the selected pixels, for the clipboard."""
+        if self._selection is None:
+            return None
+        return crop_surface(self._document.surface, *self._selection.rect)
+
+    def delete_selection(self) -> bool:
+        if self._selection is None:
+            return False
+        self._document.erase(self._selection.rect, self._erase_fill())
+        self.set_selection(None)
+        return True
+
+    def _erase_fill(self) -> tuple[float, float, float, float]:
+        # Moving or deleting a selection leaves the background colour behind, the
+        # same colour the eraser paints with.
+        color = self.colors.secondary
+        return color.red, color.green, color.blue, color.alpha
+
+    def _lift_selection(self, copy: bool) -> None:
+        """Float the selected pixels so the drag can carry them somewhere else."""
+        selection = self._selection
+        surface = crop_surface(self._document.surface, *selection.rect)
+        self.set_selection(None)
+        self.begin_paste(
+            surface,
+            selection.x,
+            selection.y,
+            source=None if copy else selection.rect,
+            fill=self._erase_fill(),
+        )
 
     # Floating paste and text
 
@@ -226,10 +341,19 @@ class Canvas(Gtk.DrawingArea):
     def cancel_floating(self) -> bool:
         return self.cancel_text() or self.cancel_paste()
 
-    def begin_paste(self, surface: cairo.ImageSurface, x: float = 0, y: float = 0) -> None:
+    def begin_paste(
+        self,
+        surface: cairo.ImageSurface,
+        x: float = 0,
+        y: float = 0,
+        source: tuple[int, int, int, int] | None = None,
+        fill: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
+    ) -> None:
         """Float an image over the canvas until it is committed or discarded."""
         self.commit_floating()
-        self._paste = FloatingPaste(surface)
+        # Whatever was selected is not what is about to hover over the canvas.
+        self.set_selection(None)
+        self._paste = FloatingPaste(surface, source=source, fill=fill)
         self._paste.move_to(x, y)
         self.grab_focus()
         self._sync_content_size()
@@ -241,7 +365,13 @@ class Canvas(Gtk.DrawingArea):
         if self._paste is None:
             return False
         paste, self._paste = self._paste, None
-        self._document.paste(paste.surface, round(paste.x), round(paste.y))
+        self._document.paste(
+            paste.surface,
+            round(paste.x),
+            round(paste.y),
+            erase=paste.source,
+            erase_fill=paste.fill,
+        )
         self._sync_content_size()
         self.queue_draw()
         self.emit("floating-changed")
@@ -331,12 +461,17 @@ class Canvas(Gtk.DrawingArea):
     def _on_key_pressed(self, controller, keyval, keycode, state) -> bool:
         if self._text is not None:
             return self._on_text_key(keyval, state)
-        if self._paste is None:
+        if self._paste is not None:
+            if keyval == Gdk.KEY_Escape:
+                return self.cancel_paste()
+            if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+                return self.commit_paste()
             return False
-        if keyval == Gdk.KEY_Escape:
-            return self.cancel_paste()
-        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
-            return self.commit_paste()
+        if self._selection is not None:
+            if keyval == Gdk.KEY_Escape:
+                return self.clear_selection()
+            if keyval in (Gdk.KEY_Delete, Gdk.KEY_KP_Delete, Gdk.KEY_BackSpace):
+                return self.delete_selection()
         return False
 
     def _on_text_key(self, keyval: int, state: Gdk.ModifierType) -> bool:
@@ -421,6 +556,9 @@ class Canvas(Gtk.DrawingArea):
         if self._text is not None and self._text.contains(x, y, TEXT_PADDING):
             self._set_cursor("text")
             return
+        if self._selection is not None and self._selection.contains(x, y):
+            self._set_cursor("selection")
+            return
         self._set_cursor(self._handle_at(x, y))
 
     def _resized_to(self, x: float, y: float) -> tuple[int, int]:
@@ -443,6 +581,7 @@ class Canvas(Gtk.DrawingArea):
             fill_shapes=self.fill_shapes,
             pick_color=lambda color, btn: self.emit("color-picked", color, btn),
             begin_text=self.begin_text,
+            select_region=self.select_region,
         )
 
     def _on_drag_begin(self, gesture, start_x, start_y):
@@ -465,6 +604,14 @@ class Canvas(Gtk.DrawingArea):
             else:
                 # Clicking away lands the paste; the click itself does not draw.
                 self.commit_paste()
+            return
+
+        if self._selection is not None and self._selection.contains(start_x, start_y):
+            # Ctrl leaves the original where it is, so the drag copies instead of moves.
+            state = gesture.get_current_event_state()
+            self._lift_selection(bool(state & Gdk.ModifierType.CONTROL_MASK))
+            self._paste_origin = (self._paste.x, self._paste.y)
+            self._set_cursor("paste")
             return
 
         handle = self._handle_at(start_x, start_y)
@@ -589,6 +736,8 @@ class Canvas(Gtk.DrawingArea):
             self._draw_paste(cr, accent, image_width, image_height)
         if self._text is not None:
             self._draw_text(cr, accent, image_width, image_height)
+        if self._selection is not None:
+            draw_marquee(cr, *self._selection.rect)
         self._draw_handles(cr, accent)
 
     @staticmethod
@@ -653,6 +802,14 @@ class Canvas(Gtk.DrawingArea):
         self, cr: cairo.Context, accent: Gdk.RGBA, image_width: int, image_height: int
     ) -> None:
         paste = self._paste
+        if paste.source is not None:
+            # The pixels are on their way out of here; show the place they leave behind.
+            cr.save()
+            cr.set_source_rgba(*paste.fill)
+            cr.rectangle(*paste.source)
+            cr.fill()
+            cr.restore()
+
         self._draw_overhang(
             cr, paste.x, paste.y, paste.width, paste.height, image_width, image_height
         )

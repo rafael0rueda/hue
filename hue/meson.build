@@ -29,6 +29,7 @@ python.install_sources(
     'tools/pencil.py',
     'tools/picker.py',
     'tools/rectangle.py',
+    'tools/select.py',
     'tools/text.py',
   ),
   subdir: 'hue/tools',

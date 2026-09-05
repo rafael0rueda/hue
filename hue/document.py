@@ -31,6 +31,18 @@ def surface_from_pixbuf(pixbuf: GdkPixbuf.Pixbuf) -> cairo.ImageSurface:
     return surface
 
 
+def crop_surface(
+    src: cairo.ImageSurface, x: int, y: int, width: int, height: int
+) -> cairo.ImageSurface:
+    """A copy of one rectangle of a surface, for lifting a selection out of it."""
+    dst = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+    cr = cairo.Context(dst)
+    cr.set_operator(cairo.OPERATOR_SOURCE)
+    cr.set_source_surface(src, -x, -y)
+    cr.paint()
+    return dst
+
+
 def copy_surface(src: cairo.ImageSurface) -> cairo.ImageSurface:
     dst = cairo.ImageSurface(cairo.FORMAT_ARGB32, src.get_width(), src.get_height())
     cr = cairo.Context(dst)
@@ -124,11 +136,31 @@ class Document(GObject.Object):
         self.surface = self._resized_surface(width, height, fill)
         self.commit_change()
 
-    def paste(self, image: cairo.ImageSurface, x: int = 0, y: int = 0) -> None:
+    def _fill_rect(self, rect: tuple[int, int, int, int], fill) -> None:
+        cr = cairo.Context(self.surface)
+        cr.set_operator(cairo.OPERATOR_SOURCE)
+        cr.set_source_rgba(*fill)
+        cr.rectangle(*rect)
+        cr.fill()
+
+    def erase(self, rect: tuple[int, int, int, int], fill=(1.0, 1.0, 1.0, 1.0)) -> None:
+        """Paint one rectangle over, the way deleting a selection leaves it."""
+        self.begin_change()
+        self._fill_rect(rect, fill)
+        self.commit_change()
+
+    def paste(
+        self,
+        image: cairo.ImageSurface,
+        x: int = 0,
+        y: int = 0,
+        erase: tuple[int, int, int, int] | None = None,
+        erase_fill=(1.0, 1.0, 1.0, 1.0),
+    ) -> None:
         """Stamp an image onto the canvas, growing it if the image runs off the edge.
 
-        The growth and the stamp share one undo entry, so a single undo takes back
-        both the new pixels and the new canvas size.
+        The growth, the optional erase of where the pixels came from, and the stamp
+        share one undo entry, so a single undo takes back a whole move.
         """
         x, y = max(0, int(x)), max(0, int(y))
         width = min(max(self.width, x + image.get_width()), MAX_SIZE)
@@ -137,6 +169,8 @@ class Document(GObject.Object):
         self.begin_change()
         if (width, height) != (self.width, self.height):
             self.surface = self._resized_surface(width, height)
+        if erase is not None:
+            self._fill_rect(erase, erase_fill)
         cr = cairo.Context(self.surface)
         cr.set_source_surface(image, x, y)
         cr.paint()
