@@ -221,9 +221,8 @@ class Canvas(Gtk.DrawingArea):
 
     def select_tool(self, tool_id: str) -> None:
         self.active_tool = self.tools[tool_id]
-        if tool_id != SELECT_TOOL_ID:
-            # A selection is only ever reachable through its own tool.
-            self.set_selection(None)
+        # A selection outlives the tool that made it: Cut, Copy and Delete keep
+        # working on it, and going back to the select tool picks it up again.
 
     @property
     def supports_fill(self) -> bool:
@@ -244,6 +243,11 @@ class Canvas(Gtk.DrawingArea):
     # Selection
 
     @property
+    def selecting(self) -> bool:
+        """Whether the select tool is the one holding the pointer."""
+        return self.active_tool.id == SELECT_TOOL_ID
+
+    @property
     def has_selection(self) -> bool:
         return self._selection is not None
 
@@ -262,6 +266,12 @@ class Canvas(Gtk.DrawingArea):
         if self._selection is not None:
             # Esc and Delete belong to the selection from here on.
             self.grab_focus()
+
+    def _selection_at(self, x: float, y: float) -> "Selection | None":
+        """The selection under a point, when the select tool is there to grab it."""
+        if not self.selecting or self._selection is None:
+            return None
+        return self._selection if self._selection.contains(x, y) else None
 
     def clear_selection(self) -> bool:
         if self._selection is None:
@@ -556,7 +566,7 @@ class Canvas(Gtk.DrawingArea):
         if self._text is not None and self._text.contains(x, y, TEXT_PADDING):
             self._set_cursor("text")
             return
-        if self._selection is not None and self._selection.contains(x, y):
+        if self._selection_at(x, y) is not None:
             self._set_cursor("selection")
             return
         self._set_cursor(self._handle_at(x, y))
@@ -606,7 +616,8 @@ class Canvas(Gtk.DrawingArea):
                 self.commit_paste()
             return
 
-        if self._selection is not None and self._selection.contains(start_x, start_y):
+        # Only the select tool picks the pixels up; the others paint over them.
+        if self._selection_at(start_x, start_y) is not None:
             # Ctrl leaves the original where it is, so the drag copies instead of moves.
             state = gesture.get_current_event_state()
             self._lift_selection(bool(state & Gdk.ModifierType.CONTROL_MASK))
