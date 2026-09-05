@@ -7,12 +7,33 @@ import cairo
 from gi.repository import Gdk, Pango, PangoCairo
 
 DEFAULT_FONT = "Sans 24"
+# What the size slider offers for text: small enough for a caption, large enough
+# for a title across the canvas.
+FONT_SIZE_RANGE = (6, 200)
 
 # The pixels that end up in the image must not depend on the desktop's text
 # scaling, so every layout Hue lays out comes from a font map pinned at the
 # usual 96 dpi rather than from the screen's.
 _FONT_MAP = PangoCairo.FontMap.new()
 _FONT_MAP.set_resolution(96)
+
+
+def font_size(font: str) -> int:
+    """The point size of a font description, as the size slider counts it."""
+    return max(1, round(Pango.FontDescription(font).get_size() / Pango.SCALE))
+
+
+def with_font_size(font: str, size: int) -> str:
+    description = Pango.FontDescription(font)
+    description.set_size(size * Pango.SCALE)
+    return description.to_string()
+
+
+def font_without_size(font: str) -> str:
+    """Just the typeface, since the size is shown on the slider instead."""
+    description = Pango.FontDescription(font)
+    description.unset_fields(Pango.FontMask.SIZE)
+    return description.to_string()
 
 
 def create_layout(text: str, font: str) -> Pango.Layout:

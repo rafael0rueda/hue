@@ -11,8 +11,11 @@ from .clipboard import has_image, read_image, texture_from_surface
 from .color import ColorBar, ColorState
 from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_SIZE, Document, new_surface
 from .file_io import image_filters, load_document, save_document
-from .text import DEFAULT_FONT
+from .text import FONT_SIZE_RANGE, font_size, font_without_size, with_font_size
 from .tools import TOOL_CLASSES
+
+# The one size slider serves the brush and, with the text tool up, the font.
+BRUSH_SIZE_RANGE = (1, 64)
 
 TOOL_ACCELS = {
     "pencil": "p",
@@ -40,6 +43,7 @@ class HueWindow(Adw.ApplicationWindow):
         self.canvas.connect("floating-changed", self._on_floating_changed)
         self._closing = False
         self._typing = False
+        self._syncing_size = False
 
         self._title = Adw.WindowTitle(title=APP_NAME)
         self.toasts = Adw.ToastOverlay()
@@ -153,15 +157,18 @@ class HueWindow(Adw.ApplicationWindow):
 
         sidebar.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
 
-        self._size_label = Gtk.Label(label="Size: 4 px", xalign=0)
+        self._size_label = Gtk.Label(xalign=0)
         self._size_label.add_css_class("caption")
         sidebar.append(self._size_label)
 
-        size_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 1, 64, 1)
-        size_scale.set_value(self.canvas.brush_size)
-        size_scale.set_draw_value(False)
-        size_scale.connect("value-changed", self._on_size_changed)
-        sidebar.append(size_scale)
+        self._size_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, *BRUSH_SIZE_RANGE, 1
+        )
+        self._size_scale.set_value(self.canvas.brush_size)
+        self._size_scale.set_draw_value(False)
+        self._size_scale.connect("value-changed", self._on_size_changed)
+        sidebar.append(self._size_scale)
+        self._sync_size_scale()
 
         self._fill_check = Gtk.CheckButton(label="Fill shape")
         self._fill_check.set_sensitive(False)
@@ -169,13 +176,14 @@ class HueWindow(Adw.ApplicationWindow):
         sidebar.append(self._fill_check)
 
         # A caption of our own rather than a GtkFontDialogButton, whose label
-        # grows the sidebar to fit whatever font name it is showing.
-        self._font_label = Gtk.Label(label=DEFAULT_FONT, xalign=0)
+        # grows the sidebar to fit whatever font name it is showing. It leaves
+        # the size out, because that is what the slider above is for.
+        self._font_label = Gtk.Label(label=font_without_size(self.canvas.font), xalign=0)
         self._font_label.add_css_class("caption")
         self._font_label.set_ellipsize(Pango.EllipsizeMode.END)
         sidebar.append(self._font_label)
 
-        self._font_button = Gtk.Button(label="Font…", tooltip_text="Font for the text tool")
+        self._font_button = Gtk.Button(label="Font…", tooltip_text="Typeface for the text tool")
         self._font_button.set_sensitive(False)
         self._font_button.connect("clicked", self._choose_font)
         sidebar.append(self._font_button)
@@ -244,11 +252,33 @@ class HueWindow(Adw.ApplicationWindow):
         self.canvas.select_tool(value.get_string())
         self._fill_check.set_sensitive(self.canvas.supports_fill)
         self._font_button.set_sensitive(self.canvas.supports_font)
+        self._sync_size_scale()
 
     def _on_size_changed(self, scale: Gtk.Scale) -> None:
+        if self._syncing_size:
+            return
         size = int(scale.get_value())
-        self.canvas.brush_size = size
-        self._size_label.set_label(f"Size: {size} px")
+        if self.canvas.supports_font:
+            self.canvas.set_font(with_font_size(self.canvas.font, size))
+        else:
+            self.canvas.brush_size = size
+        self._show_size(size)
+
+    def _sync_size_scale(self) -> None:
+        """Hand the slider over to the font while the text tool is selected."""
+        text = self.canvas.supports_font
+        size = font_size(self.canvas.font) if text else self.canvas.brush_size
+        # Moving the range moves the value with it, which would write the brush
+        # size into the font and back again.
+        self._syncing_size = True
+        self._size_scale.set_range(*(FONT_SIZE_RANGE if text else BRUSH_SIZE_RANGE))
+        self._size_scale.set_value(size)
+        self._syncing_size = False
+        self._show_size(size)
+
+    def _show_size(self, size: int) -> None:
+        unit = "pt" if self.canvas.supports_font else "px"
+        self._size_label.set_label(f"Size: {size} {unit}")
 
     def _on_fill_toggled(self, check: Gtk.CheckButton) -> None:
         self.canvas.fill_shapes = check.get_active()
@@ -262,8 +292,10 @@ class HueWindow(Adw.ApplicationWindow):
             except GLib.Error:
                 return
             font = description.to_string()
-            self._font_label.set_label(font)
+            self._font_label.set_label(font_without_size(font))
             self.canvas.set_font(font)
+            # The dialog carries a size of its own; the slider follows it.
+            self._sync_size_scale()
 
         dialog.choose_font(self, Pango.FontDescription(self.canvas.font), None, on_done)
 

@@ -111,9 +111,10 @@ applications.
 
 Pick the text tool (`T`) and click where the text should start: a dashed box appears
 with a caret in it, and what you type is drawn straight onto the canvas in the primary
-colour — right-click instead to type in the secondary one. **Font…** in the sidebar
-picks the family, style and size, and applies to the box you are typing in as well as
-the next one.
+colour — right-click instead to type in the secondary one. The sidebar slider that
+sizes the brush sizes the text instead while the text tool is selected, in points, and
+**Font…** below it picks the family and style. Both apply to the box you are typing in
+as well as the next one, so you can resize the text you are looking at.
 
 The text stays editable until it lands. `Enter` starts a new line, the arrow keys,
 `Home`, `End`, `Backspace` and `Delete` work as usual, and clicking inside the box puts
