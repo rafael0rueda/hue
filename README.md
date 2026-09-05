@@ -116,15 +116,18 @@ dashed outline marks it out. Dragging from inside that outline lifts those pixel
 carries them somewhere else — hold `Ctrl` as you start the drag to leave a copy behind
 instead of moving them. The pixels float exactly like a paste does, so `Enter` or a
 click outside lands them, `Esc` or `Ctrl+Z` puts them back, and moving them past the
-right or bottom edge grows the canvas. A move leaves the secondary colour behind, the
-same colour the eraser paints with, and the whole move — the hole and the pixels in
-their new place — is a single `Ctrl+Z`.
+right or bottom edge grows the canvas. A move leaves white behind — the colour the
+canvas is made of, not whichever colour you happen to be painting with — and the whole
+move, the gap and the pixels in their new place, is a single `Ctrl+Z`.
+
+Because a drag that starts inside the rectangle moves it, press `Esc` first when what
+you want is to select a different area that overlaps the current one.
 
 The selection outlives the tool that made it: `Ctrl+C` copies just that rectangle
-rather than the whole canvas, `Ctrl+X` cuts it out and `Delete` clears it without
-touching the clipboard, whichever tool is in hand. Only the select tool picks the
-pixels up, though — with a brush selected you paint over them as usual. `Esc`, or a
-click outside the rectangle while the select tool is in hand, drops the selection.
+rather than the whole canvas, `Ctrl+X` cuts it out and `Delete` clears it to white
+without touching the clipboard, whichever tool is in hand. Only the select tool picks
+the pixels up, though — with a brush selected you paint over them as usual. `Esc`, or
+a click outside the rectangle while the select tool is in hand, drops the selection.
 
 ## Adding text
 

@@ -144,7 +144,7 @@ class Document(GObject.Object):
         cr.fill()
 
     def erase(self, rect: tuple[int, int, int, int], fill=(1.0, 1.0, 1.0, 1.0)) -> None:
-        """Paint one rectangle over, the way deleting a selection leaves it."""
+        """Paint one rectangle over with the colour the canvas is made of."""
         self.begin_change()
         self._fill_rect(rect, fill)
         self.commit_change()
@@ -155,7 +155,6 @@ class Document(GObject.Object):
         x: int = 0,
         y: int = 0,
         erase: tuple[int, int, int, int] | None = None,
-        erase_fill=(1.0, 1.0, 1.0, 1.0),
     ) -> None:
         """Stamp an image onto the canvas, growing it if the image runs off the edge.
 
@@ -170,7 +169,9 @@ class Document(GObject.Object):
         if (width, height) != (self.width, self.height):
             self.surface = self._resized_surface(width, height)
         if erase is not None:
-            self._fill_rect(erase, erase_fill)
+            # Where a moved selection came from, left the same white a bigger
+            # canvas is made of.
+            self._fill_rect(erase, (1.0, 1.0, 1.0, 1.0))
         cr = cairo.Context(self.surface)
         cr.set_source_surface(image, x, y)
         cr.paint()

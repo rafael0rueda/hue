@@ -54,7 +54,6 @@ class FloatingPaste:
     # Where a lifted selection came from, painted over when the move lands so
     # that vacating the old place and filling the new one is one undo step.
     source: tuple[int, int, int, int] | None = None
-    fill: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
 
     @property
     def width(self) -> int:
@@ -288,15 +287,9 @@ class Canvas(Gtk.DrawingArea):
     def delete_selection(self) -> bool:
         if self._selection is None:
             return False
-        self._document.erase(self._selection.rect, self._erase_fill())
+        self._document.erase(self._selection.rect)
         self.set_selection(None)
         return True
-
-    def _erase_fill(self) -> tuple[float, float, float, float]:
-        # Moving or deleting a selection leaves the background colour behind, the
-        # same colour the eraser paints with.
-        color = self.colors.secondary
-        return color.red, color.green, color.blue, color.alpha
 
     def _lift_selection(self, copy: bool) -> None:
         """Float the selected pixels so the drag can carry them somewhere else."""
@@ -308,7 +301,6 @@ class Canvas(Gtk.DrawingArea):
             selection.x,
             selection.y,
             source=None if copy else selection.rect,
-            fill=self._erase_fill(),
         )
 
     # Floating paste and text
@@ -357,13 +349,12 @@ class Canvas(Gtk.DrawingArea):
         x: float = 0,
         y: float = 0,
         source: tuple[int, int, int, int] | None = None,
-        fill: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
     ) -> None:
         """Float an image over the canvas until it is committed or discarded."""
         self.commit_floating()
         # Whatever was selected is not what is about to hover over the canvas.
         self.set_selection(None)
-        self._paste = FloatingPaste(surface, source=source, fill=fill)
+        self._paste = FloatingPaste(surface, source=source)
         self._paste.move_to(x, y)
         self.grab_focus()
         self._sync_content_size()
@@ -380,7 +371,6 @@ class Canvas(Gtk.DrawingArea):
             round(paste.x),
             round(paste.y),
             erase=paste.source,
-            erase_fill=paste.fill,
         )
         self._sync_content_size()
         self.queue_draw()
@@ -814,9 +804,9 @@ class Canvas(Gtk.DrawingArea):
     ) -> None:
         paste = self._paste
         if paste.source is not None:
-            # The pixels are on their way out of here; show the place they leave behind.
+            # The pixels are on their way out of here; show the white they leave behind.
             cr.save()
-            cr.set_source_rgba(*paste.fill)
+            cr.set_source_rgb(1, 1, 1)
             cr.rectangle(*paste.source)
             cr.fill()
             cr.restore()
