@@ -27,6 +27,12 @@ HANDLE_SIZE = 10
 HANDLE_GRAB = 12
 # Room around the image so the grips sitting on its edge are fully visible.
 HANDLE_MARGIN = 8
+ZOOM_MIN = 0.1
+ZOOM_MAX = 8.0
+# What Ctrl+Plus/Minus step through, and Ctrl+scroll rounds towards.
+ZOOM_PRESETS = [0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 8.0]
+# Multiplier per scroll-wheel notch while zooming.
+ZOOM_SCROLL_FACTOR = 1.1
 # Breathing room between the typed text and its dashed outline.
 TEXT_PADDING = 3
 CARET_BLINK_MS = 530
@@ -116,6 +122,10 @@ class Canvas(Gtk.DrawingArea):
         "floating-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
         # A selection was made, moved out of, or dropped.
         "selection-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        "zoom-changed": (GObject.SignalFlags.RUN_FIRST, None, (float,)),
+        # The pointer moved over (or left) the canvas, in image-pixel coordinates.
+        "pointer-moved": (GObject.SignalFlags.RUN_FIRST, None, (float, float)),
+        "pointer-left": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
     def __init__(self, document: Document, colors: ColorState):
@@ -126,6 +136,7 @@ class Canvas(Gtk.DrawingArea):
         self.brush_size = 4
         self.fill_shapes = False
         self.font = DEFAULT_FONT
+        self.zoom = 1.0
 
         self._document: Document | None = None
         self._document_handler = 0
@@ -141,6 +152,8 @@ class Canvas(Gtk.DrawingArea):
         self._selection: Selection | None = None
         self._caret_visible = True
         self._blink_source = 0
+        # Raw widget-space pointer position, for Ctrl+scroll to zoom around.
+        self._last_pointer: tuple[float, float] = (0.0, 0.0)
 
         # Anchored top-left like the image itself, so dragging a resize grip does
         # not move the widget out from under the pointer.
@@ -158,8 +171,12 @@ class Canvas(Gtk.DrawingArea):
 
         motion = Gtk.EventControllerMotion()
         motion.connect("motion", self._on_motion)
-        motion.connect("leave", lambda *_: self._set_cursor(None))
+        motion.connect("leave", self._on_leave)
         self.add_controller(motion)
+
+        scroll = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.VERTICAL)
+        scroll.connect("scroll", self._on_scroll)
+        self.add_controller(scroll)
 
         # Keys only mean something while something is floating over the canvas,
         # so it takes focus for the duration rather than claiming accelerators.
@@ -215,8 +232,11 @@ class Canvas(Gtk.DrawingArea):
             float_x, float_y, float_width, float_height = bounds
             width = max(width, round(float_x) + float_width)
             height = max(height, round(float_y) + float_height)
-        self.set_content_width(width + HANDLE_MARGIN)
-        self.set_content_height(height + HANDLE_MARGIN)
+        # The margin scales with zoom too, so it stays big enough to fit the
+        # (also zoomed) resize handles without clipping them at the edge.
+        margin = round(HANDLE_MARGIN * self.zoom)
+        self.set_content_width(round(width * self.zoom) + margin)
+        self.set_content_height(round(height * self.zoom) + margin)
 
     def select_tool(self, tool_id: str) -> None:
         self.active_tool = self.tools[tool_id]
@@ -238,6 +258,75 @@ class Canvas(Gtk.DrawingArea):
             # The font button stole the focus on its way here.
             self.grab_focus()
             self._refresh_text()
+
+    # Zoom
+
+    def _to_image(self, x: float, y: float) -> tuple[float, float]:
+        """Widget-space pointer coordinates, converted to image pixels."""
+        return x / self.zoom, y / self.zoom
+
+    def set_zoom(self, zoom: float, anchor: tuple[float, float] | None = None) -> None:
+        """Change the zoom level, optionally keeping a widget-space point fixed.
+
+        `anchor` is the point on screen (e.g. the pointer) that should still be
+        over the same image pixel once the zoom changes.
+        """
+        zoom = max(ZOOM_MIN, min(zoom, ZOOM_MAX))
+        if zoom == self.zoom:
+            return
+        old_zoom = self.zoom
+        self.zoom = zoom
+        self._sync_content_size()
+        self.queue_draw()
+        self.emit("zoom-changed", zoom)
+        if anchor is not None:
+            self._preserve_anchor(anchor, old_zoom, zoom)
+
+    def _preserve_anchor(
+        self, anchor: tuple[float, float], old_zoom: float, new_zoom: float
+    ) -> None:
+        scrolled = self.get_ancestor(Gtk.ScrolledWindow)
+        if scrolled is None:
+            return
+        image_x, image_y = anchor[0] / old_zoom, anchor[1] / old_zoom
+        horizontal, vertical = scrolled.get_hadjustment(), scrolled.get_vadjustment()
+        # Captured now, before the resize below reaches the adjustments: once
+        # their bounds shrink (zooming out), GTK clamps .value on its own as
+        # part of that same update, so reading .value fresh from inside the
+        # tick callback would nudge from the already-clamped position instead
+        # of the one the pointer was actually anchored to.
+        base_value = (horizontal.get_value(), vertical.get_value())
+        stale_bounds = (horizontal.get_upper(), vertical.get_upper())
+        attempts = 0
+
+        def adjust(widget, frame_clock) -> bool:
+            nonlocal attempts
+            attempts += 1
+            settled = (horizontal.get_upper(), vertical.get_upper()) != stale_bounds
+            if not settled and attempts < 10:
+                return GLib.SOURCE_CONTINUE
+            horizontal.set_value(base_value[0] + image_x * (new_zoom - old_zoom))
+            vertical.set_value(base_value[1] + image_y * (new_zoom - old_zoom))
+            return GLib.SOURCE_REMOVE
+
+        self.add_tick_callback(adjust)
+
+    def zoom_in(self) -> None:
+        bigger = [level for level in ZOOM_PRESETS if level > self.zoom + 1e-9]
+        self.set_zoom(bigger[0] if bigger else ZOOM_MAX)
+
+    def zoom_out(self) -> None:
+        smaller = [level for level in ZOOM_PRESETS if level < self.zoom - 1e-9]
+        self.set_zoom(smaller[-1] if smaller else ZOOM_MIN)
+
+    def reset_zoom(self) -> None:
+        self.set_zoom(1.0)
+
+    def _on_scroll(self, controller, dx: float, dy: float) -> bool:
+        if not controller.get_current_event_state() & Gdk.ModifierType.CONTROL_MASK:
+            return Gdk.EVENT_PROPAGATE
+        self.set_zoom(self.zoom * ZOOM_SCROLL_FACTOR ** -dy, anchor=self._last_pointer)
+        return Gdk.EVENT_STOP
 
     # Selection
 
@@ -507,6 +596,7 @@ class Canvas(Gtk.DrawingArea):
         return True
 
     def _on_drop(self, target, value, x: float, y: float) -> bool:
+        x, y = self._to_image(x, y)
         if isinstance(value, Gdk.FileList):
             files = value.get_files()
             value = files[0] if files else None
@@ -548,6 +638,9 @@ class Canvas(Gtk.DrawingArea):
         self.set_cursor(Gdk.Cursor.new_from_name(name))
 
     def _on_motion(self, controller, x, y) -> None:
+        self._last_pointer = (x, y)
+        x, y = self._to_image(x, y)
+        self.emit("pointer-moved", x, y)
         if self._drag_origin is not None:
             return
         if self._paste is not None and self._paste.contains(x, y):
@@ -560,6 +653,10 @@ class Canvas(Gtk.DrawingArea):
             self._set_cursor("selection")
             return
         self._set_cursor(self._handle_at(x, y))
+
+    def _on_leave(self, *_) -> None:
+        self._set_cursor(None)
+        self.emit("pointer-left")
 
     def _resized_to(self, x: float, y: float) -> tuple[int, int]:
         width, height = self._document.width, self._document.height
@@ -585,6 +682,7 @@ class Canvas(Gtk.DrawingArea):
         )
 
     def _on_drag_begin(self, gesture, start_x, start_y):
+        start_x, start_y = self._to_image(start_x, start_y)
         self._drag_origin = (start_x, start_y)
 
         if self._text is not None:
@@ -632,6 +730,7 @@ class Canvas(Gtk.DrawingArea):
     def _on_drag_update(self, gesture, offset_x, offset_y):
         if self._drag_origin is None:
             return
+        offset_x, offset_y = offset_x / self.zoom, offset_y / self.zoom
         x, y = self._drag_origin[0] + offset_x, self._drag_origin[1] + offset_y
 
         if self._text_origin is not None:
@@ -666,6 +765,7 @@ class Canvas(Gtk.DrawingArea):
     def _on_drag_end(self, gesture, offset_x, offset_y):
         if self._drag_origin is None:
             return
+        offset_x, offset_y = offset_x / self.zoom, offset_y / self.zoom
         x, y = self._drag_origin[0] + offset_x, self._drag_origin[1] + offset_y
 
         if self._text_origin is not None:
@@ -711,6 +811,11 @@ class Canvas(Gtk.DrawingArea):
     def _draw(self, area, cr: cairo.Context, width: int, height: int, *_):
         image_width, image_height = self._document.width, self._document.height
 
+        # Everything below is laid out in image pixels; this one transform is
+        # what makes it appear at the current zoom level on screen.
+        cr.save()
+        cr.scale(self.zoom, self.zoom)
+
         cr.save()
         cr.rectangle(0, 0, image_width, image_height)
         cr.clip()
@@ -740,6 +845,7 @@ class Canvas(Gtk.DrawingArea):
         if self._selection is not None:
             draw_marquee(cr, *self._selection.rect)
         self._draw_handles(cr, accent)
+        cr.restore()
 
     @staticmethod
     def _accent() -> Gdk.RGBA:

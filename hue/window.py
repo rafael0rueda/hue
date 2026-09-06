@@ -43,6 +43,9 @@ class HueWindow(Adw.ApplicationWindow):
         self.canvas.connect("resize-preview", self._on_resize_preview)
         self.canvas.connect("floating-changed", self._on_floating_changed)
         self.canvas.connect("selection-changed", lambda *_: self._sync_selection_actions())
+        self.canvas.connect("zoom-changed", self._on_zoom_changed)
+        self.canvas.connect("pointer-moved", self._on_pointer_moved)
+        self.canvas.connect("pointer-left", lambda *_: self._cursor_label.set_label(""))
         self._closing = False
         self._typing = False
         self._syncing_size = False
@@ -93,6 +96,11 @@ class HueWindow(Adw.ApplicationWindow):
         edit_section.append("Copy", "win.copy")
         edit_section.append("Paste", "win.paste")
         menu.append_section(None, edit_section)
+        view_section = Gio.Menu()
+        view_section.append("Zoom In", "win.zoom-in")
+        view_section.append("Zoom Out", "win.zoom-out")
+        view_section.append("Reset Zoom", "win.zoom-reset")
+        menu.append_section(None, view_section)
         file_section = Gio.Menu()
         file_section.append("Save As…", "win.save-as")
         file_section.append("Canvas Size…", "win.resize")
@@ -115,6 +123,21 @@ class HueWindow(Adw.ApplicationWindow):
         colors = ColorBar(self.colors)
         colors.set_hexpand(True)
         bar.append(colors)
+
+        self._cursor_label = Gtk.Label()
+        self._cursor_label.add_css_class("numeric")
+        self._cursor_label.add_css_class("dim-label")
+        bar.append(self._cursor_label)
+
+        self._zoom_label = Gtk.Label()
+        self._zoom_label.add_css_class("numeric")
+        zoom_button = Gtk.Button(tooltip_text="Reset zoom (Ctrl+0)")
+        zoom_button.set_child(self._zoom_label)
+        zoom_button.add_css_class("flat")
+        zoom_button.set_valign(Gtk.Align.CENTER)
+        zoom_button.set_action_name("win.zoom-reset")
+        bar.append(zoom_button)
+        self._on_zoom_changed(self.canvas, self.canvas.zoom)
 
         # The canvas size lives here rather than in the header subtitle, which
         # renders too small to read at larger interface font sizes.
@@ -208,6 +231,9 @@ class HueWindow(Adw.ApplicationWindow):
             "paste": lambda *_: self._paste(),
             "swap-colors": lambda *_: self.colors.swap(),
             "resize": lambda *_: self._prompt_canvas_size(),
+            "zoom-in": lambda *_: self.canvas.zoom_in(),
+            "zoom-out": lambda *_: self.canvas.zoom_out(),
+            "zoom-reset": lambda *_: self.canvas.reset_zoom(),
         }
         for name, callback in simple_actions.items():
             action = Gio.SimpleAction.new(name, None)
@@ -233,6 +259,9 @@ class HueWindow(Adw.ApplicationWindow):
             "win.redo": ["<Control><Shift>z", "<Control>y"],
             "win.swap-colors": ["x"],
             "win.resize": ["<Control>e"],
+            "win.zoom-in": ["<Control>plus", "<Control>equal", "<Control>KP_Add"],
+            "win.zoom-out": ["<Control>minus", "<Control>KP_Subtract"],
+            "win.zoom-reset": ["<Control>0", "<Control>KP_0"],
             "app.quit": ["<Control>q"],
         }
         for tool_id, key in TOOL_ACCELS.items():
@@ -352,6 +381,12 @@ class HueWindow(Adw.ApplicationWindow):
     def _on_resize_preview(self, canvas, width: int, height: int) -> None:
         """Count out the pending size while a resize grip is being dragged."""
         self._canvas_size_label.set_label(f"{width} × {height} px")
+
+    def _on_zoom_changed(self, canvas, zoom: float) -> None:
+        self._zoom_label.set_label(f"{round(zoom * 100)}%")
+
+    def _on_pointer_moved(self, canvas, x: float, y: float) -> None:
+        self._cursor_label.set_label(f"{round(x)}, {round(y)} px")
 
     # Clipboard
 
