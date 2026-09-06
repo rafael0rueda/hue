@@ -16,6 +16,7 @@ pkgdatadir = datadir / meson.project_name()
 
 subdir('hue')
 subdir('data')
+subdir('tests')
 
 gnome.post_install(
   gtk_update_icon_cache: true,
