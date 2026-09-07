@@ -92,10 +92,18 @@ class HueWindow(Adw.ApplicationWindow):
 
         menu = Gio.Menu()
         edit_section = Gio.Menu()
+        edit_section.append("Select All", "win.select-all")
         edit_section.append("Cut", "win.cut")
         edit_section.append("Copy", "win.copy")
         edit_section.append("Paste", "win.paste")
         menu.append_section(None, edit_section)
+        image_section = Gio.Menu()
+        image_section.append("Crop to Selection", "win.crop")
+        image_section.append("Rotate Clockwise", "win.rotate-cw")
+        image_section.append("Rotate Counterclockwise", "win.rotate-ccw")
+        image_section.append("Flip Horizontal", "win.flip-horizontal")
+        image_section.append("Flip Vertical", "win.flip-vertical")
+        menu.append_section(None, image_section)
         view_section = Gio.Menu()
         view_section.append("Zoom In", "win.zoom-in")
         view_section.append("Zoom Out", "win.zoom-out")
@@ -226,6 +234,7 @@ class HueWindow(Adw.ApplicationWindow):
             "save-as": lambda *_: self._save_as(),
             "undo": self._action_undo,
             "redo": lambda *_: self.canvas.document.redo(),
+            "select-all": lambda *_: self._select_all(),
             "cut": lambda *_: self._cut(),
             "copy": lambda *_: self._copy(),
             "paste": lambda *_: self._paste(),
@@ -234,6 +243,11 @@ class HueWindow(Adw.ApplicationWindow):
             "zoom-in": lambda *_: self.canvas.zoom_in(),
             "zoom-out": lambda *_: self.canvas.zoom_out(),
             "zoom-reset": lambda *_: self.canvas.reset_zoom(),
+            "crop": lambda *_: self.canvas.crop_to_selection(),
+            "rotate-cw": lambda *_: self._transform_image(lambda d: d.rotate(True)),
+            "rotate-ccw": lambda *_: self._transform_image(lambda d: d.rotate(False)),
+            "flip-horizontal": lambda *_: self._transform_image(lambda d: d.flip(True)),
+            "flip-vertical": lambda *_: self._transform_image(lambda d: d.flip(False)),
         }
         for name, callback in simple_actions.items():
             action = Gio.SimpleAction.new(name, None)
@@ -252,6 +266,7 @@ class HueWindow(Adw.ApplicationWindow):
             "win.open": ["<Control>o"],
             "win.save": ["<Control>s"],
             "win.save-as": ["<Control><Shift>s"],
+            "win.select-all": ["<Control>a"],
             "win.cut": ["<Control>x"],
             "win.copy": ["<Control>c"],
             "win.paste": ["<Control>v"],
@@ -388,20 +403,31 @@ class HueWindow(Adw.ApplicationWindow):
     def _on_pointer_moved(self, canvas, x: float, y: float) -> None:
         self._cursor_label.set_label(f"{round(x)}, {round(y)} px")
 
+    def _transform_image(self, apply) -> None:
+        """Whatever floats or is selected does not survive a rotate or flip."""
+        self.canvas.commit_floating()
+        self.canvas.clear_selection()
+        apply(self.canvas.document)
+
     # Clipboard
 
     def _sync_paste_action(self) -> None:
         self.lookup_action("paste").set_enabled(has_image(self.get_clipboard()))
 
     def _sync_selection_actions(self) -> None:
-        # There is nothing to cut out of the canvas without a selection.
+        # There is nothing to cut or crop to without a selection.
         self.lookup_action("cut").set_enabled(self.canvas.has_selection)
+        self.lookup_action("crop").set_enabled(self.canvas.has_selection)
 
     def _put_on_clipboard(self, surface) -> None:
         texture = texture_from_surface(surface)
         self.get_clipboard().set_content(Gdk.ContentProvider.new_for_value(texture))
         # The clipboard's own notification is asynchronous; do not wait for it.
         self._sync_paste_action()
+
+    def _select_all(self) -> None:
+        self.lookup_action("tool").change_state(GLib.Variant.new_string("select"))
+        self.canvas.select_all()
 
     def _copy(self) -> None:
         self.canvas.commit_floating()

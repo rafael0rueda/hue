@@ -24,6 +24,8 @@ class ToolContext:
     pick_color: Callable[[Gdk.RGBA, int], None]
     begin_text: Callable[[float, float, Gdk.RGBA], None]
     select_region: Callable[[float, float, float, float], None]
+    # Shift held: squares up a shape or snaps a line to a 45° angle.
+    constrain: bool = False
 
     @property
     def color(self) -> Gdk.RGBA:
@@ -139,10 +141,10 @@ class ShapeTool(Tool):
         self._current = (x, y)
 
     def motion(self, ctx, x, y):
-        self._current = (x, y)
+        self._current = self._constrain((x, y)) if ctx.constrain else (x, y)
 
     def release(self, ctx, x, y):
-        self._current = (x, y)
+        self._current = self._constrain((x, y)) if ctx.constrain else (x, y)
         if self._start is not None:
             cr = cairo.Context(ctx.surface)
             self.render(cr, ctx, self._start, self._current)
@@ -155,6 +157,13 @@ class ShapeTool(Tool):
 
     def render(self, cr, ctx, start, end) -> None:
         raise NotImplementedError
+
+    def _constrain(self, point: tuple[float, float]) -> tuple[float, float]:
+        """Square up the drag: equal width and height, same direction as the drag."""
+        x, y = point
+        sx, sy = self._start
+        size = max(abs(x - sx), abs(y - sy))
+        return (sx + size * (1 if x >= sx else -1), sy + size * (1 if y >= sy else -1))
 
     @staticmethod
     def rect(start, end) -> tuple[float, float, float, float]:

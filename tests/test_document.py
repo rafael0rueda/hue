@@ -170,3 +170,62 @@ def test_paste_growth_and_erase_undo_in_a_single_step():
     document.undo()
     assert (document.width, document.height) == (2, 2)
     assert pixel_at(document.surface, 0, 0) == (255, 0, 0, 255)
+
+
+# Rotate / flip
+
+
+def _marked_document() -> Document:
+    """A 2x3 canvas with a red pixel at (0, 0), the rest white — asymmetric on
+    both axes, so a rotation or flip can only land the marker in one place."""
+    surface = new_surface(2, 3, WHITE)
+    paint_pixel(surface, 0, 0, RED)
+    return Document(surface)
+
+
+def test_rotate_clockwise_swaps_dimensions_and_turns_the_marker():
+    document = _marked_document()
+    document.rotate(True)
+    assert (document.width, document.height) == (3, 2)
+    assert pixel_at(document.surface, 2, 0) == (255, 0, 0, 255)
+    assert document.can_undo
+
+
+def test_rotate_counterclockwise_swaps_dimensions_and_turns_the_marker():
+    document = _marked_document()
+    document.rotate(False)
+    assert (document.width, document.height) == (3, 2)
+    assert pixel_at(document.surface, 0, 1) == (255, 0, 0, 255)
+
+
+def test_flip_horizontal_mirrors_left_right():
+    document = _marked_document()
+    document.flip(True)
+    assert (document.width, document.height) == (2, 3)
+    assert pixel_at(document.surface, 1, 0) == (255, 0, 0, 255)
+
+
+def test_flip_vertical_mirrors_top_bottom():
+    document = _marked_document()
+    document.flip(False)
+    assert (document.width, document.height) == (2, 3)
+    assert pixel_at(document.surface, 0, 2) == (255, 0, 0, 255)
+
+
+# Crop
+
+
+def test_crop_to_extracts_the_rectangle():
+    document = Document(new_surface(4, 4, WHITE))
+    paint_pixel(document.surface, 2, 1, RED)
+    document.crop_to(1, 1, 2, 2)
+    assert (document.width, document.height) == (2, 2)
+    assert pixel_at(document.surface, 1, 0) == (255, 0, 0, 255)
+    assert document.can_undo
+
+
+def test_crop_to_undoes_back_to_the_original_size():
+    document = Document(new_surface(4, 4, RED))
+    document.crop_to(0, 0, 1, 1)
+    document.undo()
+    assert (document.width, document.height) == (4, 4)

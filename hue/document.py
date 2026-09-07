@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import math
+
 import cairo
 from gi.repository import Gdk, GdkPixbuf, GObject
 
@@ -134,6 +136,52 @@ class Document(GObject.Object):
 
         self.begin_change()
         self.surface = self._resized_surface(width, height, fill)
+        self.commit_change()
+
+    def _rotated_surface(self, clockwise: bool) -> cairo.ImageSurface:
+        surface = new_surface(self.height, self.width, (0.0, 0.0, 0.0, 0.0))
+        cr = cairo.Context(surface)
+        cr.set_operator(cairo.OPERATOR_SOURCE)
+        if clockwise:
+            cr.translate(self.height, 0)
+            cr.rotate(math.pi / 2)
+        else:
+            cr.translate(0, self.width)
+            cr.rotate(-math.pi / 2)
+        cr.set_source_surface(self.surface, 0, 0)
+        cr.paint()
+        return surface
+
+    def rotate(self, clockwise: bool) -> None:
+        """Turn the whole canvas a quarter turn, swapping its width and height."""
+        self.begin_change()
+        self.surface = self._rotated_surface(clockwise)
+        self.commit_change()
+
+    def _flipped_surface(self, horizontal: bool) -> cairo.ImageSurface:
+        surface = new_surface(self.width, self.height, (0.0, 0.0, 0.0, 0.0))
+        cr = cairo.Context(surface)
+        cr.set_operator(cairo.OPERATOR_SOURCE)
+        if horizontal:
+            cr.translate(self.width, 0)
+            cr.scale(-1, 1)
+        else:
+            cr.translate(0, self.height)
+            cr.scale(1, -1)
+        cr.set_source_surface(self.surface, 0, 0)
+        cr.paint()
+        return surface
+
+    def flip(self, horizontal: bool) -> None:
+        """Mirror the whole canvas left-right or top-bottom."""
+        self.begin_change()
+        self.surface = self._flipped_surface(horizontal)
+        self.commit_change()
+
+    def crop_to(self, x: int, y: int, width: int, height: int) -> None:
+        """Shrink the canvas to one rectangle of itself, discarding the rest."""
+        self.begin_change()
+        self.surface = crop_surface(self.surface, x, y, width, height)
         self.commit_change()
 
     def _fill_rect(self, rect: tuple[int, int, int, int], fill) -> None:
