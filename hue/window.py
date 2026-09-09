@@ -10,7 +10,8 @@ from .canvas import Canvas
 from .clipboard import has_image, read_image, texture_from_surface
 from .color import ColorBar, ColorState
 from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_SIZE, Document, new_surface
-from .file_io import image_filters, load_document, save_document
+from .file_io import format_for, image_filters, load_document, save_document
+from .recent_files import forget_recent, load_recent, remember_recent
 from .text import FONT_SIZE_RANGE, font_size, font_without_size, with_font_size
 from .tools import TOOL_CLASSES
 
@@ -49,9 +50,11 @@ class HueWindow(Adw.ApplicationWindow):
         self._closing = False
         self._typing = False
         self._syncing_size = False
+        self._last_jpeg_quality = 90
 
         self._title = Adw.WindowTitle(title=APP_NAME)
         self.toasts = Adw.ToastOverlay()
+        self._recent_menu = Gio.Menu()
 
         toolbars = Adw.ToolbarView()
         toolbars.add_top_bar(self._build_header())
@@ -63,6 +66,7 @@ class HueWindow(Adw.ApplicationWindow):
 
         self._install_actions()
         self._watch_document()
+        self._refresh_recent_menu()
         self.connect("close-request", self._on_close_request)
 
     # UI construction
@@ -110,6 +114,7 @@ class HueWindow(Adw.ApplicationWindow):
         view_section.append("Reset Zoom", "win.zoom-reset")
         menu.append_section(None, view_section)
         file_section = Gio.Menu()
+        file_section.append_submenu("Recent Files", self._recent_menu)
         file_section.append("Save As…", "win.save-as")
         file_section.append("Canvas Size…", "win.resize")
         menu.append_section(None, file_section)
@@ -259,6 +264,10 @@ class HueWindow(Adw.ApplicationWindow):
         )
         tool_action.connect("change-state", self._on_tool_changed)
         self.add_action(tool_action)
+
+        open_recent_action = Gio.SimpleAction.new("open-recent", GLib.VariantType.new("s"))
+        open_recent_action.connect("activate", self._action_open_recent)
+        self.add_action(open_recent_action)
 
         app = self.get_application()
         accels = {
@@ -560,8 +569,41 @@ class HueWindow(Adw.ApplicationWindow):
                 self._set_document(load_document(file))
             except GLib.Error as error:
                 self._toast(f"Could not open image: {error.message}")
+                return
+            self._remember_recent(file)
 
         dialog.open(self, None, on_done)
+
+    def _refresh_recent_menu(self) -> None:
+        self._recent_menu.remove_all()
+        recent = load_recent()
+        if not recent:
+            self._recent_menu.append("No Recent Files", None)
+            return
+        for uri in recent:
+            item = Gio.MenuItem.new(Gio.File.new_for_uri(uri).get_basename(), None)
+            item.set_action_and_target_value("win.open-recent", GLib.Variant.new_string(uri))
+            self._recent_menu.append_item(item)
+
+    def _remember_recent(self, file: Gio.File) -> None:
+        remember_recent(file)
+        self._refresh_recent_menu()
+
+    def _action_open_recent(self, action, param: GLib.Variant) -> None:
+        uri = param.get_string()
+
+        def proceed():
+            file = Gio.File.new_for_uri(uri)
+            try:
+                self._set_document(load_document(file))
+            except GLib.Error as error:
+                self._toast(f"Could not open “{file.get_basename()}”: {error.message}")
+                forget_recent(uri)
+                self._refresh_recent_menu()
+                return
+            self._remember_recent(file)
+
+        self._confirm_discard(proceed)
 
     def _save(self, then=None) -> None:
         # What gets written should match what is on screen.
@@ -588,12 +630,48 @@ class HueWindow(Adw.ApplicationWindow):
         dialog.save(self, None, on_done)
 
     def _write(self, file: Gio.File, then=None) -> None:
+        if format_for(file) == "jpeg":
+            self._prompt_jpeg_quality(lambda quality: self._write_now(file, then, quality))
+        else:
+            self._write_now(file, then, None)
+
+    def _prompt_jpeg_quality(self, on_accept) -> None:
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 1, 100, 1)
+        scale.set_value(self._last_jpeg_quality)
+        scale.set_draw_value(True)
+        scale.set_hexpand(True)
+        scale.set_size_request(220, -1)
+
+        dialog = Adw.AlertDialog(
+            heading="JPEG Quality",
+            body="Lower values make a smaller file but lose more detail.",
+        )
+        dialog.set_extra_child(scale)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("save", "Save")
+        dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("save")
+        dialog.set_close_response("cancel")
+
+        def on_response(_dialog, response: str) -> None:
+            if response == "save":
+                self._last_jpeg_quality = int(scale.get_value())
+                on_accept(self._last_jpeg_quality)
+
+        dialog.connect("response", on_response)
+        dialog.present(self)
+
+    def _write_now(self, file: Gio.File, then, quality: int | None) -> None:
         try:
-            save_document(self.canvas.document, file)
+            if quality is None:
+                save_document(self.canvas.document, file)
+            else:
+                save_document(self.canvas.document, file, quality=quality)
         except GLib.Error as error:
             self._toast(f"Could not save image: {error.message}")
             return
         self._toast(f"Saved {file.get_basename()}")
+        self._remember_recent(file)
         if then is not None:
             then()
 

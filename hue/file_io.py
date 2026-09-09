@@ -53,7 +53,7 @@ def format_for(file: Gio.File) -> str:
     return EXTENSION_FORMATS.get(extension, "png")
 
 
-def save_document(document: Document, file: Gio.File) -> None:
+def save_document(document: Document, file: Gio.File, quality: int = 90) -> None:
     image_format = format_for(file)
 
     if image_format in FLATTEN_FORMATS:
@@ -76,7 +76,8 @@ def save_document(document: Document, file: Gio.File) -> None:
     else:
         pixbuf = document.to_pixbuf()
 
-    pixbuf.savev(file.get_path(), image_format, [], [])
+    options = (["quality"], [str(quality)]) if image_format == "jpeg" else ([], [])
+    pixbuf.savev(file.get_path(), image_format, *options)
     document.file = file
     document.modified = False
     document.emit("state-changed")

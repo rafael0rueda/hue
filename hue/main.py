@@ -17,6 +17,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from . import APP_ID, APP_NAME, VERSION  # noqa: E402
 from .file_io import load_document  # noqa: E402
+from .recent_files import remember_recent  # noqa: E402
 from .window import HueWindow  # noqa: E402
 
 
@@ -53,6 +54,8 @@ class HueApplication(Adw.Application):
         except GLib.Error as error:
             print(f"hue: could not open image: {error.message}", file=sys.stderr)
             document = None
+        else:
+            remember_recent(files[0])
         HueWindow(self, document).present()
 
     def _load_resources(self) -> None:

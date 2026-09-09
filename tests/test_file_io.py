@@ -101,6 +101,23 @@ def test_save_document_updates_document_state(tmp_path):
     assert seen == [True]
 
 
+def test_save_document_jpeg_quality_affects_file_size(tmp_path):
+    document = Document(new_surface(64, 64, WHITE))
+    for x in range(64):
+        for y in range(64):
+            paint_pixel(document.surface, x, y, RED if (x + y) % 2 else WHITE)
+
+    low = tmp_path / "low.jpg"
+    high = tmp_path / "high.jpg"
+    save_document(document, gio_file(low), quality=10)
+    save_document(document, gio_file(high), quality=95)
+
+    assert low.stat().st_size < high.stat().st_size
+    # Still a readable image at either quality.
+    reloaded = load_document(gio_file(high))
+    assert (reloaded.width, reloaded.height) == (64, 64)
+
+
 def test_save_document_flattens_transparency_onto_white_for_bmp(tmp_path):
     document = Document(new_surface(2, 1, WHITE))
     paint_pixel(document.surface, 0, 0, TRANSPARENT)
