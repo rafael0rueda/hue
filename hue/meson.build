@@ -11,6 +11,7 @@ python.install_sources(
     'document.py',
     'file_io.py',
     'main.py',
+    'recent_files.py',
     'text.py',
     'window.py',
   ),
