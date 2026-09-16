@@ -4,6 +4,8 @@ A straightforward raster paint application for Fedora / GNOME, in the spirit of 
 classic Windows Paint. Built with GTK4 and libadwaita, it follows the system light/dark
 preference and accent colour automatically, and works entirely offline.
 
+![Hue's main window: the tool palette on the left, a blank 800 × 600 canvas in the middle, and the colour palette, pointer position, zoom level and canvas size along the bottom](data/screenshots/main-window.png)
+
 ## Requirements
 
 Fedora Workstation 40 or newer:
