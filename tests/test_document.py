@@ -7,6 +7,7 @@ from hue.document import (
     copy_surface,
     crop_surface,
     new_surface,
+    same_pixels,
 )
 
 from pixels import paint_pixel, pixel_at
@@ -97,6 +98,112 @@ def test_undo_history_is_capped_at_max_undo():
         document.begin_change()
         document.commit_change()
     assert len(document._undo) == MAX_UNDO
+
+
+def paint_change(document, color=RED) -> None:
+    document.begin_change()
+    paint_pixel(document.surface, 0, 0, color)
+    document.commit_change()
+
+
+# Modified, measured against the saved image
+
+
+def test_a_new_document_is_unmodified_until_changed():
+    document = Document(new_surface(1, 1, WHITE))
+    assert not document.modified
+    paint_change(document)
+    assert document.modified
+
+
+def test_undoing_back_to_the_saved_image_clears_modified():
+    document = Document(new_surface(1, 1, WHITE))
+    paint_change(document)
+    document.undo()
+    assert not document.modified
+    document.redo()
+    assert document.modified
+
+
+def test_the_save_point_moves_with_saving():
+    document = Document(new_surface(1, 1, WHITE))
+    paint_change(document)
+    document.modified = False  # what saving does
+    paint_change(document, WHITE)
+    assert document.modified
+    document.undo()
+    assert not document.modified
+    document.undo()
+    assert document.modified
+
+
+def test_a_saved_image_dropped_from_redo_stays_modified():
+    document = Document(new_surface(1, 1, WHITE))
+    paint_change(document)
+    document.modified = False
+    document.undo()
+    # A different edit replaces the redo step that led back to the saved image.
+    paint_change(document, (0.0, 0.0, 1.0, 1.0))
+    document.undo()
+    assert document.modified
+
+
+def test_a_saved_image_trimmed_from_history_stays_modified():
+    document = Document(new_surface(1, 1, WHITE))
+    for _ in range(MAX_UNDO + 1):
+        paint_change(document)
+    while document.can_undo:
+        document.undo()
+    assert document.modified
+
+
+def test_trimming_history_keeps_a_later_save_point_in_step():
+    document = Document(new_surface(1, 1, WHITE))
+    paint_change(document)
+    document.modified = False
+    for _ in range(MAX_UNDO):
+        paint_change(document, WHITE)
+    for _ in range(MAX_UNDO):
+        document.undo()
+    assert not document.modified
+
+
+# finish_change
+
+
+def test_finish_change_drops_an_edit_that_changed_no_pixels():
+    document = Document(new_surface(2, 2, WHITE))
+    paint_change(document)
+    document.undo()
+    changes = []
+    document.connect("content-changed", lambda *_: changes.append(True))
+
+    document.begin_change()
+    paint_pixel(document.surface, 1, 1, WHITE)  # white over white
+    document.finish_change()
+
+    assert not document.can_undo
+    assert document.can_redo  # the earlier undo can still be redone
+    assert not document.modified
+    assert changes == []
+
+
+def test_finish_change_keeps_an_edit_that_changed_pixels():
+    document = Document(new_surface(2, 2, WHITE))
+    document.begin_change()
+    paint_pixel(document.surface, 1, 1, RED)
+    document.finish_change()
+    assert document.can_undo
+    assert document.modified
+
+
+def test_same_pixels():
+    a = new_surface(3, 2, WHITE)
+    assert same_pixels(a, copy_surface(a))
+    assert not same_pixels(a, new_surface(2, 3, WHITE))
+    b = copy_surface(a)
+    paint_pixel(b, 2, 1, RED)
+    assert not same_pixels(a, b)
 
 
 # Resize

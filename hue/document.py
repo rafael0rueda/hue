@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import math
 
 import cairo
@@ -12,6 +13,10 @@ MAX_UNDO = 50
 DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 600
 MAX_SIZE = 8192
+
+_libc = ctypes.CDLL(None)
+_libc.memcmp.restype = ctypes.c_int
+_libc.memcmp.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t)
 
 
 def new_surface(width: int, height: int, fill=(1.0, 1.0, 1.0, 1.0)) -> cairo.ImageSurface:
@@ -54,6 +59,25 @@ def copy_surface(src: cairo.ImageSurface) -> cairo.ImageSurface:
     return dst
 
 
+def same_pixels(a: cairo.ImageSurface, b: cairo.ImageSurface) -> bool:
+    """Whether two surfaces hold identical images.
+
+    Compared with memcmp, since comparing the memoryviews from Python walks them
+    a byte at a time: about 300 ms for the largest canvas against 10 ms.
+    """
+    if (a.get_width(), a.get_height()) != (b.get_width(), b.get_height()):
+        return False
+    a.flush()
+    b.flush()
+    a_data, b_data = a.get_data(), b.get_data()
+    size = len(a_data)
+    if size != len(b_data):
+        return False
+    a_buffer = (ctypes.c_char * size).from_buffer(a_data)
+    b_buffer = (ctypes.c_char * size).from_buffer(b_data)
+    return _libc.memcmp(a_buffer, b_buffer, size) == 0
+
+
 class Document(GObject.Object):
     """The painted image plus its undo history."""
 
@@ -66,9 +90,14 @@ class Document(GObject.Object):
         super().__init__()
         self.surface = surface or new_surface(DEFAULT_WIDTH, DEFAULT_HEIGHT)
         self.file = None
-        self.modified = False
         self._undo: list[cairo.ImageSurface] = []
         self._redo: list[cairo.ImageSurface] = []
+        # How many undo steps deep the saved image sits, so undoing back to it
+        # counts as unmodified. None once no undo or redo can reach it again.
+        self._saved_depth: int | None = 0
+        # The redo steps and save point begin_change() replaced, put back if
+        # the change turns out to alter nothing.
+        self._pending: tuple[list[cairo.ImageSurface], int | None] | None = None
 
     @property
     def width(self) -> int:
@@ -82,16 +111,50 @@ class Document(GObject.Object):
     def title(self) -> str:
         return self.file.get_basename() if self.file else "Untitled"
 
+    @property
+    def modified(self) -> bool:
+        return self._saved_depth != len(self._undo)
+
+    @modified.setter
+    def modified(self, value: bool) -> None:
+        # Saving marks the image as it is now; anything else just forgets
+        # where the saved one was.
+        self._saved_depth = None if value else len(self._undo)
+
     def begin_change(self) -> None:
         """Snapshot the surface so the coming edit can be undone."""
+        self._pending = (self._redo, self._saved_depth)
         self._undo.append(copy_surface(self.surface))
-        del self._undo[:-MAX_UNDO]
-        self._redo.clear()
+        self._redo = []
+        if self._saved_depth is not None and self._saved_depth >= len(self._undo):
+            # The saved image was among the redo steps just dropped.
+            self._saved_depth = None
 
     def commit_change(self) -> None:
-        self.modified = True
+        self._pending = None
+        excess = len(self._undo) - MAX_UNDO
+        if excess > 0:
+            del self._undo[:excess]
+            if self._saved_depth is not None:
+                # Trimmed away along with the oldest steps, it is out of reach.
+                depth = self._saved_depth - excess
+                self._saved_depth = depth if depth >= 0 else None
         self.emit("content-changed")
         self.emit("state-changed")
+
+    def finish_change(self) -> None:
+        """Commit the change begun earlier, unless the image came out identical.
+
+        A fill in the colour already there, or a stroke off the canvas, then
+        leaves no undo step behind and does not mark the image as modified.
+        """
+        if self._pending is not None and self._undo and same_pixels(self._undo[-1], self.surface):
+            self._undo.pop()
+            self._redo, self._saved_depth = self._pending
+            self._pending = None
+            self.emit("state-changed")
+            return
+        self.commit_change()
 
     @property
     def can_undo(self) -> bool:

@@ -21,6 +21,24 @@ from .recent_files import forget_recent, load_recent, remember_recent
 from .text import FONT_SIZE_RANGE, font_size, font_without_size, with_font_size
 from .tools import TOOL_CLASSES
 
+# Actions that edit or replace the image. A stroke, move or resize in progress
+# holds on to the image it started on, so these wait until the button is let go.
+IMAGE_ACTIONS = {
+    "new",
+    "open",
+    "undo",
+    "redo",
+    "select-all",
+    "cut",
+    "paste",
+    "resize",
+    "crop",
+    "rotate-cw",
+    "rotate-ccw",
+    "flip-horizontal",
+    "flip-vertical",
+}
+
 # The one size slider serves the brush and, with the text tool up, the font.
 BRUSH_SIZE_RANGE = (1, 64)
 
@@ -263,17 +281,20 @@ class HueWindow(Adw.ApplicationWindow):
         }
         for name, callback in simple_actions.items():
             action = Gio.SimpleAction.new(name, None)
+            if name in IMAGE_ACTIONS:
+                callback = self._unless_dragging(callback)
             action.connect("activate", callback)
             self.add_action(action)
 
         tool_action = Gio.SimpleAction.new_stateful(
             "tool", GLib.VariantType.new("s"), GLib.Variant.new_string("pencil")
         )
-        tool_action.connect("change-state", self._on_tool_changed)
+        # Swapping tools mid-stroke would hand the release to a tool that never saw the press.
+        tool_action.connect("change-state", self._unless_dragging(self._on_tool_changed))
         self.add_action(tool_action)
 
         open_recent_action = Gio.SimpleAction.new("open-recent", GLib.VariantType.new("s"))
-        open_recent_action.connect("activate", self._action_open_recent)
+        open_recent_action.connect("activate", self._unless_dragging(self._action_open_recent))
         self.add_action(open_recent_action)
 
         app = self.get_application()
@@ -311,6 +332,15 @@ class HueWindow(Adw.ApplicationWindow):
         clipboard.connect("changed", lambda *_: self._sync_paste_action())
         self._sync_paste_action()
         self._sync_selection_actions()
+
+    def _unless_dragging(self, callback):
+        """Wrap an action handler so it does nothing while a mouse button is held."""
+
+        def handler(*args):
+            if not self.canvas.is_dragging:
+                callback(*args)
+
+        return handler
 
     def _on_tool_changed(self, action, value: GLib.Variant) -> None:
         self.canvas.commit_floating()

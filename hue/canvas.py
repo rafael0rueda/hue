@@ -239,6 +239,10 @@ class Canvas(Gtk.DrawingArea):
     def document(self, value: Document) -> None:
         if self._document is not None and self._document_handler:
             self._document.disconnect(self._document_handler)
+        # A selection or a paste belongs to the image it was made on, and
+        # would land outside a smaller one.
+        self.cancel_floating()
+        self.set_selection(None)
         self._document = value
         self._document_handler = value.connect("content-changed", self._on_content_changed)
         self._sync_content_size()
@@ -269,6 +273,11 @@ class Canvas(Gtk.DrawingArea):
         margin = round(HANDLE_MARGIN * self.zoom)
         self.set_content_width(round(width * self.zoom) + margin)
         self.set_content_height(round(height * self.zoom) + margin)
+
+    @property
+    def is_dragging(self) -> bool:
+        """Whether a button is held down: a stroke, move or resize is under way."""
+        return self._drag_origin is not None
 
     def select_tool(self, tool_id: str) -> None:
         self.active_tool = self.tools[tool_id]
@@ -970,7 +979,7 @@ class Canvas(Gtk.DrawingArea):
         )
         self.active_tool.release(self._drag_context, x, y)
         if self.active_tool.mutates:
-            self._document.commit_change()
+            self._document.finish_change()
         self._drag_origin = None
         self._drag_context = None
         self.queue_draw()

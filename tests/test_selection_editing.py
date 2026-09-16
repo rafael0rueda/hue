@@ -152,3 +152,23 @@ def test_handle_at_picks_the_closest_handle_on_a_small_selection():
     assert canvas._handle_at(3, 3) == "se"
     assert canvas._handle_at(1, 1) == "nw"
     assert canvas._handle_at(2, 1) == "n"
+
+
+# Swapping the document
+
+
+def test_a_new_document_drops_the_selection():
+    canvas = make_canvas(8, 8)
+    canvas.select_region(6, 6, 2, 2)
+    canvas.document = Document(new_surface(2, 2, WHITE))
+    assert not canvas.has_selection
+
+
+def test_a_new_document_does_not_receive_the_old_floating_paste():
+    canvas = make_canvas()
+    canvas.begin_paste(new_surface(2, 2, RED), 0, 0)
+    replacement = Document(new_surface(4, 4, WHITE))
+    canvas.document = replacement
+    assert not canvas.has_floating
+    assert pixel_at(replacement.surface, 0, 0) == (255, 255, 255, 255)
+    assert not replacement.can_undo
