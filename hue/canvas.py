@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cache
 
 import cairo
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk
@@ -24,6 +25,9 @@ from .tools import (
 )
 
 CHECKER_SIZE = 8
+# Below this zoom the image is shrunk, where smoothing reads better than dropped
+# pixels; at or above it every image pixel shows as a crisp square.
+SMOOTH_ZOOM_BELOW = 1.0
 HANDLE_SIZE = 10
 HANDLE_GRAB = 12
 # Room around the image so the grips sitting on its edge are fully visible.
@@ -138,6 +142,28 @@ class Selection:
 
     def clamped(self, image_width: int, image_height: int) -> "Selection | None":
         return self.from_rect(self.x, self.y, self.width, self.height, image_width, image_height)
+
+
+@cache
+def _checker_pattern() -> cairo.SurfacePattern:
+    """One 2 × 2 tile of the checkerboard, repeated by cairo.
+
+    Drawing each square as its own rectangle came to half a million of them per
+    frame on the largest canvas.
+    """
+    size = CHECKER_SIZE * 2
+    tile = cairo.ImageSurface(cairo.FORMAT_RGB24, size, size)
+    cr = cairo.Context(tile)
+    cr.set_source_rgb(1, 1, 1)
+    cr.paint()
+    cr.set_source_rgb(0.9, 0.9, 0.9)
+    cr.rectangle(CHECKER_SIZE, 0, CHECKER_SIZE, CHECKER_SIZE)
+    cr.rectangle(0, CHECKER_SIZE, CHECKER_SIZE, CHECKER_SIZE)
+    cr.fill()
+    pattern = cairo.SurfacePattern(tile)
+    pattern.set_extend(cairo.EXTEND_REPEAT)
+    pattern.set_filter(cairo.FILTER_NEAREST)
+    return pattern
 
 
 class Canvas(Gtk.DrawingArea):
@@ -997,8 +1023,10 @@ class Canvas(Gtk.DrawingArea):
         cr.save()
         cr.rectangle(0, 0, image_width, image_height)
         cr.clip()
-        self._draw_checkerboard(cr, image_width, image_height)
+        self._draw_checkerboard(cr)
         cr.set_source_surface(self._document.surface, 0, 0)
+        if self.zoom >= SMOOTH_ZOOM_BELOW:
+            cr.get_source().set_filter(cairo.FILTER_NEAREST)
         cr.paint()
 
         if self._drag_context is not None:
@@ -1150,12 +1178,10 @@ class Canvas(Gtk.DrawingArea):
             cr.stroke()
 
     @staticmethod
-    def _draw_checkerboard(cr: cairo.Context, width: int, height: int) -> None:
-        cr.set_source_rgb(1, 1, 1)
+    def _draw_checkerboard(cr: cairo.Context) -> None:
+        """Fill the current clip with the transparency checkerboard."""
+        cr.save()
+        cr.set_source(_checker_pattern())
         cr.paint()
-        cr.set_source_rgb(0.9, 0.9, 0.9)
-        for row in range(0, height, CHECKER_SIZE):
-            for column in range(0, width, CHECKER_SIZE):
-                if (row // CHECKER_SIZE + column // CHECKER_SIZE) % 2:
-                    cr.rectangle(column, row, CHECKER_SIZE, CHECKER_SIZE)
-        cr.fill()
+        cr.restore()
+

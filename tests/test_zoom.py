@@ -1,9 +1,16 @@
 # SPDX-FileCopyrightText: 2026 Rafael Rueda
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import cairo
+
 from hue.canvas import ZOOM_MAX, ZOOM_MIN, ZOOM_PRESETS, Canvas
 from hue.color import ColorState
-from hue.document import Document
+from hue.document import Document, new_surface
+
+from pixels import paint_pixel, pixel_at
+
+WHITE = (1.0, 1.0, 1.0, 1.0)
+BLACK = (0.0, 0.0, 0.0, 1.0)
 
 
 def make_canvas() -> Canvas:
@@ -70,3 +77,39 @@ def test_set_zoom_emits_zoom_changed():
     canvas.connect("zoom-changed", lambda _canvas, zoom: changes.append(zoom))
     canvas.set_zoom(2.0)
     assert changes == [2.0]
+
+
+# Drawing
+
+
+def render(canvas: Canvas, width: int, height: int):
+    """Draw the canvas widget into an image, the way GTK would on screen."""
+    target = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+    canvas._draw(canvas, cairo.Context(target), width, height)
+    return target
+
+
+def test_zoomed_in_pixels_stay_crisp():
+    # One black pixel on white, at 400%: every screen pixel around it is one or
+    # the other, never the grey a smoothing filter would blend in between.
+    surface = new_surface(40, 40, WHITE)
+    paint_pixel(surface, 10, 10, BLACK)
+    canvas = Canvas(Document(surface), ColorState())
+    canvas.set_zoom(4.0)
+
+    # Rendered well inside the image, clear of the resize grips on its edges.
+    screen = render(canvas, 60, 60)
+
+    row = [pixel_at(screen, x, 42) for x in range(36, 48)]
+    assert row == [(255, 255, 255, 255)] * 4 + [(0, 0, 0, 255)] * 4 + [(255, 255, 255, 255)] * 4
+
+
+def test_transparency_shows_the_checkerboard():
+    canvas = Canvas(Document(new_surface(20, 20, (0.0, 0.0, 0.0, 0.0))), ColorState())
+    screen = render(canvas, 20, 20)
+    light, dark = (255, 255, 255, 255), (230, 230, 230, 255)
+    assert pixel_at(screen, 3, 3) == light
+    assert pixel_at(screen, 11, 3) == dark
+    assert pixel_at(screen, 3, 11) == dark
+    assert pixel_at(screen, 11, 11) == light
+    assert pixel_at(screen, 17, 3) == light
