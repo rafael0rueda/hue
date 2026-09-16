@@ -47,6 +47,7 @@ class HueWindow(Adw.ApplicationWindow):
         self.canvas.connect("zoom-changed", self._on_zoom_changed)
         self.canvas.connect("pointer-moved", self._on_pointer_moved)
         self.canvas.connect("pointer-left", lambda *_: self._cursor_label.set_label(""))
+        self.canvas.connect("drop-failed", lambda _canvas, message: self.show_toast(message))
         self._closing = False
         self._typing = False
         self._syncing_size = False
@@ -443,7 +444,7 @@ class HueWindow(Adw.ApplicationWindow):
         # A selection narrows the copy down to itself; otherwise it is the canvas.
         selection = self.canvas.selection_surface()
         self._put_on_clipboard(selection or self.canvas.document.surface)
-        self._toast("Copied the selection" if selection else "Copied to clipboard")
+        self.show_toast("Copied the selection" if selection else "Copied to clipboard")
 
     def _cut(self) -> None:
         self.canvas.commit_floating()
@@ -452,18 +453,19 @@ class HueWindow(Adw.ApplicationWindow):
             return
         self._put_on_clipboard(selection)
         self.canvas.delete_selection()
-        self._toast("Cut the selection")
+        self.show_toast("Cut the selection")
 
     def _paste(self) -> None:
-        read_image(self.get_clipboard(), self.canvas.begin_paste, self._toast)
+        read_image(self.get_clipboard(), self.canvas.begin_paste, self.show_toast)
 
     def _action_undo(self, *_) -> None:
         # A paste or a text box has not been stamped down yet, so undo drops it.
         if not self.canvas.cancel_floating():
             self.canvas.document.undo()
 
-    def _toast(self, message: str) -> None:
-        self.toasts.add_toast(Adw.Toast(title=message))
+    def show_toast(self, message: str) -> None:
+        # Messages carry file names and loader errors, which are not markup.
+        self.toasts.add_toast(Adw.Toast(title=message, use_markup=False))
 
     def _confirm_discard(self, proceed) -> None:
         self.canvas.commit_floating()
@@ -568,7 +570,7 @@ class HueWindow(Adw.ApplicationWindow):
             try:
                 self._set_document(load_document(file))
             except GLib.Error as error:
-                self._toast(f"Could not open image: {error.message}")
+                self.show_toast(f"Could not open image: {error.message}")
                 return
             self._remember_recent(file)
 
@@ -597,7 +599,7 @@ class HueWindow(Adw.ApplicationWindow):
             try:
                 self._set_document(load_document(file))
             except GLib.Error as error:
-                self._toast(f"Could not open “{file.get_basename()}”: {error.message}")
+                self.show_toast(f"Could not open “{file.get_basename()}”: {error.message}")
                 forget_recent(uri)
                 self._refresh_recent_menu()
                 return
@@ -668,9 +670,9 @@ class HueWindow(Adw.ApplicationWindow):
             else:
                 save_document(self.canvas.document, file, quality=quality)
         except GLib.Error as error:
-            self._toast(f"Could not save image: {error.message}")
+            self.show_toast(f"Could not save image: {error.message}")
             return
-        self._toast(f"Saved {file.get_basename()}")
+        self.show_toast(f"Saved {file.get_basename()}")
         self._remember_recent(file)
         if then is not None:
             then()

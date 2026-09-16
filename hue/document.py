@@ -225,10 +225,6 @@ class Document(GObject.Object):
         cr.paint()
         self.commit_change()
 
-    @classmethod
-    def from_pixbuf(cls, pixbuf: GdkPixbuf.Pixbuf) -> "Document":
-        return cls(surface_from_pixbuf(pixbuf))
-
     def to_pixbuf(self) -> GdkPixbuf.Pixbuf:
         self.surface.flush()
         return Gdk.pixbuf_get_from_surface(self.surface, 0, 0, self.width, self.height)

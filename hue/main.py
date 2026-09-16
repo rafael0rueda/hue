@@ -49,14 +49,19 @@ class HueApplication(Adw.Application):
         window.present()
 
     def do_open(self, files, n_files, hint):
+        error_message = None
         try:
             document = load_document(files[0])
         except GLib.Error as error:
-            print(f"hue: could not open image: {error.message}", file=sys.stderr)
+            error_message = error.message
             document = None
         else:
             remember_recent(files[0])
-        HueWindow(self, document).present()
+        window = HueWindow(self, document)
+        window.present()
+        if error_message is not None:
+            print(f"hue: could not open image: {error_message}", file=sys.stderr)
+            window.show_toast(f"Could not open image: {error_message}")
 
     def _load_resources(self) -> None:
         directory = data_dir()

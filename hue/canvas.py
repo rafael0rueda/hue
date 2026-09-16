@@ -8,9 +8,10 @@ from dataclasses import dataclass
 import cairo
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk
 
-from .clipboard import surface_from_file, surface_from_texture
+from .clipboard import surface_from_texture
 from .color import ColorState
 from .document import MAX_SIZE, Document, crop_surface
+from .file_io import load_surface
 from .text import DEFAULT_FONT, TextBox
 from .tools import (
     SELECT_TOOL_ID,
@@ -153,6 +154,8 @@ class Canvas(Gtk.DrawingArea):
         # The pointer moved over (or left) the canvas, in image-pixel coordinates.
         "pointer-moved": (GObject.SignalFlags.RUN_FIRST, None, (float, float)),
         "pointer-left": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        # Something was dropped on the canvas but could not be read as an image.
+        "drop-failed": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
     }
 
     def __init__(self, document: Document, colors: ColorState):
@@ -673,11 +676,12 @@ class Canvas(Gtk.DrawingArea):
             if isinstance(value, Gdk.Texture):
                 surface = surface_from_texture(value)
             elif isinstance(value, Gio.File):
-                surface = surface_from_file(value)
+                surface = load_surface(value)
             else:
                 return False
-        except (GLib.Error, TypeError):
-            # An unreadable file or a format GdkPixbuf does not know.
+        except GLib.Error as error:
+            # An unreadable or oversized file, or a format GdkPixbuf does not know.
+            self.emit("drop-failed", error.message)
             return False
         # Drop where the pointer let go, centred on the pasted image.
         self.begin_paste(surface, x - surface.get_width() / 2, y - surface.get_height() / 2)

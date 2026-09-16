@@ -6,9 +6,9 @@ from __future__ import annotations
 import os
 
 import cairo
-from gi.repository import Gdk, GdkPixbuf, Gio, Gtk
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
 
-from .document import Document, new_surface
+from .document import MAX_SIZE, Document, new_surface, surface_from_pixbuf
 
 EXTENSION_FORMATS = {
     ".png": "png",
@@ -21,6 +21,7 @@ EXTENSION_FORMATS = {
     ".ico": "ico",
 }
 FLATTEN_FORMATS = {"jpeg", "bmp"}
+LOAD_CHUNK = 64 * 1024
 
 
 def image_filters() -> Gio.ListStore:
@@ -41,9 +42,71 @@ def image_filters() -> Gio.ListStore:
     return store
 
 
+def load_error(message: str) -> GLib.Error:
+    """A failure to read an image, raised the same way GdkPixbuf reports its own."""
+    return GLib.Error.new_literal(Gio.io_error_quark(), message, Gio.IOErrorEnum.FAILED)
+
+
+def fits(width: int, height: int) -> bool:
+    return width <= MAX_SIZE and height <= MAX_SIZE
+
+
+def check_image_size(width: int, height: int) -> None:
+    """Refuse an image bigger than a canvas can be, before its pixels are copied."""
+    if not fits(width, height):
+        # Short enough for a toast at the window's default width.
+        raise load_error(f"Too large at {width} × {height} px (the limit is {MAX_SIZE})")
+
+
+def load_surface(file: Gio.File) -> cairo.ImageSurface:
+    """Decode an image file into a surface, raising GLib.Error when it cannot be.
+
+    A small file can declare enormous dimensions, so the size is checked as soon
+    as the loader has read the header rather than after decoding gigabytes.
+    """
+    if file.get_path() is None:
+        # Hue stays offline, so a web or network address is never fetched.
+        raise load_error(f"“{file.get_basename()}” is not a file on this computer")
+
+    declared = (0, 0)
+
+    def on_size_prepared(loader, width, height):
+        nonlocal declared
+        declared = (width, height)
+        if not fits(width, height):
+            # The loader goes on to decode into whatever size is set here, so
+            # shrink it to nothing rather than let it allocate the real thing.
+            loader.set_size(1, 1)
+
+    # Opened first: a loader that is never closed warns when it is freed.
+    stream = file.read(None)
+    loader = GdkPixbuf.PixbufLoader()
+    loader.connect("size-prepared", on_size_prepared)
+    try:
+        while fits(*declared):
+            chunk = stream.read_bytes(LOAD_CHUNK, None)
+            if chunk.get_size() == 0:
+                break
+            loader.write_bytes(chunk)
+        loader.close()
+    except GLib.Error:
+        # Closing twice is harmless.
+        try:
+            loader.close()
+        except GLib.Error:
+            pass
+        # Cutting a too-large image short is expected to upset the decoder.
+        if fits(*declared):
+            raise
+    finally:
+        stream.close(None)
+
+    check_image_size(*declared)
+    return surface_from_pixbuf(loader.get_pixbuf())
+
+
 def load_document(file: Gio.File) -> Document:
-    pixbuf = GdkPixbuf.Pixbuf.new_from_file(file.get_path())
-    document = Document.from_pixbuf(pixbuf)
+    document = Document(load_surface(file))
     document.file = file
     return document
 

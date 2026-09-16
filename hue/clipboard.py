@@ -6,9 +6,10 @@ from __future__ import annotations
 from typing import Callable
 
 import cairo
-from gi.repository import Gdk, GdkPixbuf, Gio, GLib, GObject
+from gi.repository import Gdk, Gio, GLib, GObject
 
 from .document import surface_from_pixbuf
+from .file_io import check_image_size, load_surface
 
 NO_IMAGE = "No image in the clipboard"
 
@@ -23,6 +24,7 @@ def surface_from_texture(texture: Gdk.Texture) -> cairo.ImageSurface:
     texture a copy of the buffer, so the pixels never reach us — hence the
     detour through GdkPixbuf.
     """
+    check_image_size(texture.get_width(), texture.get_height())
     return surface_from_pixbuf(Gdk.pixbuf_get_from_texture(texture))
 
 
@@ -37,10 +39,6 @@ def texture_from_surface(surface: cairo.ImageSurface) -> Gdk.Texture:
         GLib.Bytes.new(bytes(surface.get_data())),
         surface.get_stride(),
     )
-
-
-def surface_from_file(file: Gio.File) -> cairo.ImageSurface:
-    return surface_from_pixbuf(GdkPixbuf.Pixbuf.new_from_file(file.get_path()))
 
 
 def has_image(clipboard: Gdk.Clipboard) -> bool:
@@ -66,17 +64,29 @@ def read_image(
 
     def on_texture(source, result):
         try:
-            on_image(surface_from_texture(source.read_texture_finish(result)))
-            return
+            texture = source.read_texture_finish(result)
         except (GLib.Error, TypeError):
-            pass
-        # Copying a file in Files puts paths on the clipboard rather than pixels.
-        clipboard.read_value_async(Gio.File, GLib.PRIORITY_DEFAULT, None, on_file)
+            # Copying a file in Files puts paths on the clipboard rather than pixels.
+            clipboard.read_value_async(Gio.File, GLib.PRIORITY_DEFAULT, None, on_file)
+            return
+        convert(surface_from_texture, texture)
 
     def on_file(source, result):
         try:
-            on_image(surface_from_file(source.read_value_finish(result)))
+            file = source.read_value_finish(result)
         except (GLib.Error, TypeError):
             on_error(NO_IMAGE)
+            return
+        convert(load_surface, file)
+
+    def convert(to_surface, value):
+        # There is an image, but it cannot be used — say why rather than
+        # claiming the clipboard is empty.
+        try:
+            surface = to_surface(value)
+        except GLib.Error as error:
+            on_error(error.message)
+            return
+        on_image(surface)
 
     clipboard.read_texture_async(None, on_texture)

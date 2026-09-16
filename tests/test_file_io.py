@@ -1,12 +1,16 @@
 # SPDX-FileCopyrightText: 2026 Rafael Rueda
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import resource
+import struct
+import zlib
 from pathlib import Path
 
-from gi.repository import Gdk, GdkPixbuf, Gio, Gtk
+import pytest
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
 
-from hue.document import Document, new_surface
-from hue.file_io import format_for, image_filters, load_document, save_document
+from hue.document import MAX_SIZE, Document, new_surface
+from hue.file_io import format_for, image_filters, load_document, load_surface, save_document
 
 from pixels import paint_pixel, pixel_at
 
@@ -68,6 +72,66 @@ def test_load_document_reads_pixels_and_sets_the_file(tmp_path):
     assert (document.width, document.height) == (2, 2)
     assert pixel_at(document.surface, 0, 0) == (0, 255, 0, 255)
     assert document.file == file
+
+
+def write_png(path: Path, width: int, height: int) -> None:
+    pixbuf = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, width, height)
+    pixbuf.fill(0xFFFFFFFF)
+    pixbuf.savev(str(path), "png", [], [])
+
+
+def png_chunk(kind: bytes, data: bytes) -> bytes:
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+
+def test_load_surface_accepts_the_largest_canvas_size(tmp_path):
+    path = tmp_path / "wide.png"
+    write_png(path, MAX_SIZE, 1)
+    assert load_surface(gio_file(path)).get_width() == MAX_SIZE
+
+
+def test_load_surface_refuses_an_image_wider_than_a_canvas_can_be(tmp_path):
+    path = tmp_path / "too-wide.png"
+    write_png(path, MAX_SIZE + 1, 1)
+    with pytest.raises(GLib.Error, match=f"{MAX_SIZE + 1} × 1 px"):
+        load_surface(gio_file(path))
+
+
+def test_load_surface_refuses_a_decompression_bomb_without_decoding_it(tmp_path):
+    # A few kilobytes of PNG declaring 60000 × 60000 pixels: about 14 GB decoded.
+    side = 60000
+    header = struct.pack(">IIBBBBB", side, side, 8, 6, 0, 0, 0)
+    rows = zlib.compress(b"\0" * (side * 4 + 1) * 64, 9)
+    path = tmp_path / "bomb.png"
+    path.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + png_chunk(b"IHDR", header)
+        + png_chunk(b"IDAT", rows)
+        + png_chunk(b"IEND", b"")
+    )
+
+    peak_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    with pytest.raises(GLib.Error, match="60000 × 60000 px"):
+        load_surface(gio_file(path))
+    peak_growth_kib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - peak_before
+    assert peak_growth_kib < 256 * 1024
+
+
+def test_load_surface_refuses_a_file_that_is_not_local():
+    with pytest.raises(GLib.Error, match="not a file on this computer"):
+        load_surface(Gio.File.new_for_uri("https://example.com/picture.png"))
+
+
+def test_load_surface_raises_for_a_missing_file(tmp_path):
+    with pytest.raises(GLib.Error):
+        load_surface(gio_file(tmp_path / "missing.png"))
+
+
+def test_load_surface_raises_for_a_file_that_is_not_an_image(tmp_path):
+    path = tmp_path / "notes.png"
+    path.write_text("not really a picture")
+    with pytest.raises(GLib.Error):
+        load_surface(gio_file(path))
 
 
 # save_document
