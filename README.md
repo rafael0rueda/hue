@@ -26,6 +26,18 @@ python3 -m hue
 
 Optionally pass an image to open: `python3 -m hue picture.png`
 
+## Running the tests
+
+The pytest suite covers the drawing, file, clipboard, selection, text and undo logic,
+and checks that every module and icon the app uses gets installed. It needs no display.
+
+```
+sudo dnf install python3-pytest
+python3 -m pytest
+```
+
+From a meson build directory, `meson test -C builddir` runs the same suite.
+
 ## Installing
 
 ```
@@ -123,6 +135,9 @@ pointer, and the change is applied when you let go. For an exact size, click tha
 readout or use **Canvas Size…** (`Ctrl+E`) in the main menu. Either way the image keeps
 its top-left corner — growing the canvas adds white, shrinking it crops — and the
 resize can be undone with `Ctrl+Z`.
+
+While the select tool has a selection, its own eight handles take the place of these
+grips; press `Esc` to drop the selection and get them back.
 
 ## Pasting images
 

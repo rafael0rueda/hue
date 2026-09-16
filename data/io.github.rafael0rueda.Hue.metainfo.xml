@@ -13,14 +13,17 @@
       spirit of the classic Paint. It gives you the core drawing tools and gets out of
       the way.
     </p>
-    <p>Tools included:</p>
+    <p>Features:</p>
     <ul>
       <li>Pencil, brush and eraser</li>
-      <li>Line, rectangle and ellipse, filled or outlined</li>
+      <li>Line, rectangle and ellipse, filled or outlined, with Shift for squares, circles and 45° lines</li>
       <li>Text in any font installed on the system</li>
       <li>Flood fill and colour picker</li>
-      <li>Rectangular selection to move, copy or cut part of the image</li>
-      <li>Undo and redo history</li>
+      <li>Rectangular selection to move, copy, cut, stretch or crop to</li>
+      <li>Paste screenshots and drop images straight onto the canvas</li>
+      <li>Zoom from 10% to 800%, with crisp pixels when zoomed in</li>
+      <li>Rotate and flip the whole image, and resize the canvas by dragging its edge</li>
+      <li>Undo and redo history, and a list of recently opened files</li>
     </ul>
     <p>
       Hue works entirely offline: it never connects to the network and keeps every
@@ -32,13 +35,54 @@
   </developer>
   <url type="homepage">https://github.com/rafael0rueda/hue</url>
   <url type="bugtracker">https://github.com/rafael0rueda/hue/issues</url>
+  <url type="vcs-browser">https://github.com/rafael0rueda/hue</url>
   <launchable type="desktop-id">io.github.rafael0rueda.Hue.desktop</launchable>
   <content_rating type="oars-1.1"/>
+  <branding>
+    <color type="primary" scheme_preference="light">#dc8add</color>
+    <color type="primary" scheme_preference="dark">#613583</color>
+  </branding>
+  <requires>
+    <display_length compare="ge">480</display_length>
+  </requires>
+  <recommends>
+    <control>pointing</control>
+  </recommends>
+  <supports>
+    <control>keyboard</control>
+  </supports>
+  <screenshots>
+    <screenshot type="default">
+      <caption>The main window with a blank canvas</caption>
+      <image type="source" width="1116" height="797">https://raw.githubusercontent.com/rafael0rueda/hue/v0.2.0/data/screenshots/main-window.png</image>
+    </screenshot>
+  </screenshots>
   <categories>
     <category>Graphics</category>
     <category>RasterGraphics</category>
   </categories>
   <releases>
+    <release version="0.2.0" date="2026-09-16">
+      <description>
+        <p>New features:</p>
+        <ul>
+          <li>Zoom with Ctrl+scroll or Ctrl+plus and minus, with crisp pixels when zoomed in</li>
+          <li>Rotate, flip and crop the image to a selection</li>
+          <li>Stretch a selection or a pasted image with its handles, and nudge it with the arrow keys</li>
+          <li>Shift draws squares, circles and 45° lines</li>
+          <li>Recent Files, and a quality setting when saving as JPEG</li>
+        </ul>
+        <p>Fixes and improvements:</p>
+        <ul>
+          <li>Saving can no longer destroy the original file if it fails</li>
+          <li>Images too large to edit are refused instead of exhausting memory</li>
+          <li>Flood fill is many times faster</li>
+          <li>Undo history is capped by memory, and undoing back to the saved image clears the unsaved-changes marker</li>
+          <li>The Flatpak no longer needs access to the Pictures folder</li>
+          <li>Fixed missing toolbar icons in the Flatpak</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-09-03">
       <description><p>First release with the core drawing tools.</p></description>
     </release>
