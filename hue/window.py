@@ -101,7 +101,7 @@ class HueWindow(Adw.ApplicationWindow):
         header.set_title_widget(self._title)
 
         for icon, action, tooltip in (
-            ("document-new-symbolic", "win.new", "New image (Ctrl+N)"),
+            ("hue-new-symbolic", "win.new", "New image (Ctrl+N)"),
             ("document-open-symbolic", "win.open", "Open image (Ctrl+O)"),
             ("hue-save-symbolic", "win.save", "Save (Ctrl+S)"),
         ):
@@ -112,8 +112,8 @@ class HueWindow(Adw.ApplicationWindow):
         history = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         history.add_css_class("linked")
         for icon, action, tooltip in (
-            ("edit-undo-symbolic", "win.undo", "Undo (Ctrl+Z)"),
-            ("edit-redo-symbolic", "win.redo", "Redo (Ctrl+Shift+Z)"),
+            ("hue-undo-symbolic", "win.undo", "Undo (Ctrl+Z)"),
+            ("hue-redo-symbolic", "win.redo", "Redo (Ctrl+Shift+Z)"),
         ):
             button = Gtk.Button(icon_name=icon, tooltip_text=tooltip)
             button.set_action_name(action)

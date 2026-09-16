@@ -14,3 +14,29 @@ def test_every_module_is_installed():
     installed = set(re.findall(r"'([\w/]+\.py)'", (PACKAGE / "meson.build").read_text()))
     modules = {path.relative_to(PACKAGE).as_posix() for path in PACKAGE.rglob("*.py")}
     assert modules - installed == set()
+
+
+def test_every_icon_is_shipped_or_built_into_gtk():
+    """Buttons must not depend on the desktop's icon theme.
+
+    Under Flatpak the host theme is often out of reach (one in ~/.icons, say),
+    and GTK then only has the few icons compiled into it, so anything else
+    renders as a broken-image placeholder.
+    """
+    from gi.repository import Gio, Gtk
+
+    Gtk.init()
+    built_in = {
+        name.removesuffix(".svg")
+        for name in Gio.resources_enumerate_children("/org/gtk/libgtk/icons/", 0)
+    }
+    shipped = {
+        path.name.removesuffix(".svg")
+        for path in (PACKAGE.parent / "data" / "icons").rglob("*.svg")
+    }
+    used = set()
+    for path in PACKAGE.rglob("*.py"):
+        used |= set(re.findall(r'"([\w-]+-symbolic)"', path.read_text()))
+
+    assert used, "the icon names were not found at all"
+    assert used - shipped - built_in == set()

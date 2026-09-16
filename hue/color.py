@@ -125,7 +125,7 @@ class ColorBar(Gtk.Box):
         current.append(self._secondary_swatch)
         self.append(current)
 
-        swap = Gtk.Button(icon_name="object-flip-horizontal-symbolic", tooltip_text="Swap colors (X)")
+        swap = Gtk.Button(icon_name="hue-swap-symbolic", tooltip_text="Swap colors (X)")
         swap.add_css_class("flat")
         swap.set_valign(Gtk.Align.CENTER)
         swap.connect("clicked", lambda *_: colors.swap())
