@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Rafael Rueda
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from hue import document as document_module
 from hue.document import (
     MAX_UNDO,
     Document,
@@ -98,6 +99,40 @@ def test_undo_history_is_capped_at_max_undo():
         document.begin_change()
         document.commit_change()
     assert len(document._undo) == MAX_UNDO
+
+
+def test_undo_history_is_capped_by_memory(monkeypatch):
+    # Each step of a 10 × 10 image is 400 bytes; allow room for three.
+    monkeypatch.setattr(document_module, "UNDO_BUDGET", 1200)
+    document = Document(new_surface(10, 10, WHITE))
+    for shade in range(5):
+        document.begin_change()
+        paint_pixel(document.surface, 0, 0, (shade * 51 / 255, 0.0, 0.0, 1.0))
+        document.commit_change()
+
+    assert len(document._undo) == 3
+    # What is left are the newest steps: undoing all of them lands on the
+    # image before the third edit, not on the original white.
+    while document.can_undo:
+        document.undo()
+    assert pixel_at(document.surface, 0, 0) == (51, 0, 0, 255)
+
+
+def test_undo_history_keeps_the_newest_step_even_over_budget(monkeypatch):
+    monkeypatch.setattr(document_module, "UNDO_BUDGET", 1)
+    document = Document(new_surface(10, 10, WHITE))
+    for _ in range(3):
+        paint_change(document)
+    assert len(document._undo) == 1
+
+
+def test_a_save_point_trimmed_for_memory_stays_modified(monkeypatch):
+    monkeypatch.setattr(document_module, "UNDO_BUDGET", 400)
+    document = Document(new_surface(10, 10, WHITE))
+    paint_change(document)
+    paint_change(document, WHITE)
+    document.undo()
+    assert document.modified
 
 
 def paint_change(document, color=RED) -> None:

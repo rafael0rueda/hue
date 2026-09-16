@@ -10,6 +10,10 @@ import cairo
 from gi.repository import Gdk, GdkPixbuf, GObject
 
 MAX_UNDO = 50
+# Every undo step is a full copy of the image, so the history is also capped by
+# memory: 50 steps of a 4000 × 3000 photo would otherwise take 2.4 GB, and of
+# the largest canvas 12.8 GB. The newest step is always kept, whatever its size.
+UNDO_BUDGET = 1024 * 1024 * 1024
 DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 600
 MAX_SIZE = 8192
@@ -57,6 +61,10 @@ def copy_surface(src: cairo.ImageSurface) -> cairo.ImageSurface:
     cr.set_source_surface(src, 0, 0)
     cr.paint()
     return dst
+
+
+def surface_bytes(surface: cairo.ImageSurface) -> int:
+    return surface.get_stride() * surface.get_height()
 
 
 def same_pixels(a: cairo.ImageSurface, b: cairo.ImageSurface) -> bool:
@@ -132,15 +140,26 @@ class Document(GObject.Object):
 
     def commit_change(self) -> None:
         self._pending = None
-        excess = len(self._undo) - MAX_UNDO
-        if excess > 0:
-            del self._undo[:excess]
-            if self._saved_depth is not None:
-                # Trimmed away along with the oldest steps, it is out of reach.
-                depth = self._saved_depth - excess
-                self._saved_depth = depth if depth >= 0 else None
+        self._trim_history()
         self.emit("content-changed")
         self.emit("state-changed")
+
+    def _trim_history(self) -> None:
+        """Drop the oldest undo steps past MAX_UNDO or UNDO_BUDGET, keeping the newest."""
+        kept = len(self._undo)
+        total = sum(surface_bytes(surface) for surface in self._undo)
+        excess = 0
+        while kept > 1 and (kept > MAX_UNDO or total > UNDO_BUDGET):
+            total -= surface_bytes(self._undo[excess])
+            excess += 1
+            kept -= 1
+        if excess == 0:
+            return
+        del self._undo[:excess]
+        if self._saved_depth is not None:
+            # Trimmed away along with the oldest steps, it is out of reach.
+            depth = self._saved_depth - excess
+            self._saved_depth = depth if depth >= 0 else None
 
     def finish_change(self) -> None:
         """Commit the change begun earlier, unless the image came out identical.
