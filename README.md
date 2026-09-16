@@ -55,36 +55,65 @@ canvas or copy from Files, all of which reach it through the desktop's file port
 
 ## Tools and shortcuts
 
-| Tool          | Key | Notes                                        |
-| ------------- | --- | -------------------------------------------- |
-| Pencil        | `P` | Hard-edged, no antialiasing                  |
-| Brush         | `B` | Soft round stroke                            |
-| Eraser        | `E` | Paints the secondary (background) colour     |
-| Line          | `L` |                                              |
-| Rectangle     | `R` | "Fill shape" fills with the secondary colour |
-| Ellipse       | `O` |                                              |
-| Text          | `T` | Type onto the canvas in any installed font   |
-| Fill          | `F` | Flood fill with a small colour tolerance     |
-| Colour picker | `K` | Picks the colour under the cursor            |
-| Select        | `S` | Rectangle to move, copy or cut               |
+| Tool          | Key | Notes                                                                |
+| ------------- | --- | -------------------------------------------------------------------- |
+| Pencil        | `P` | Hard-edged, no antialiasing                                          |
+| Brush         | `B` | Soft round stroke                                                    |
+| Eraser        | `E` | Paints the secondary (background) colour                             |
+| Line          | `L` | `Shift` snaps it to 45° steps                                        |
+| Rectangle     | `R` | "Fill shape" fills with the secondary colour; `Shift` draws a square |
+| Ellipse       | `O` | `Shift` draws a circle                                               |
+| Text          | `T` | Type onto the canvas in any installed font                           |
+| Fill          | `F` | Flood fill with a small colour tolerance                             |
+| Colour picker | `K` | Picks the colour under the cursor                                    |
+| Select        | `S` | Rectangle to move, copy or cut                                       |
 
 Left click draws with the primary colour, right click with the secondary one. Both
 colour swatches in the bottom bar work the same way: left click sets the primary
 colour, right click the secondary. `X` swaps them.
 
-| Action                      | Shortcut                                        |
-| --------------------------- | ----------------------------------------------- |
-| New / Open / Save / Save As | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` / `Ctrl+Shift+S` |
-| Canvas size                 | `Ctrl+E`                                        |
-| Cut / Copy / Paste          | `Ctrl+X` / `Ctrl+C` / `Ctrl+V`                  |
-| Land / discard a paste      | `Enter` / `Esc`                                 |
-| Drop / clear a selection    | `Esc` / `Delete`                                |
-| Land / discard typed text   | `Ctrl+Enter` / `Esc`                            |
-| Undo / Redo                 | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`)         |
-| Quit                        | `Ctrl+Q`                                        |
+| Action                      | Shortcut                                         |
+| --------------------------- | ------------------------------------------------ |
+| New / Open / Save / Save As | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` / `Ctrl+Shift+S`  |
+| Canvas size                 | `Ctrl+E`                                         |
+| Select all                  | `Ctrl+A`                                         |
+| Cut / Copy / Paste          | `Ctrl+X` / `Ctrl+C` / `Ctrl+V`                   |
+| Nudge a selection or paste  | Arrow keys (`Shift` for 10 px)                   |
+| Land / discard a paste      | `Enter` / `Esc`                                  |
+| Drop / clear a selection    | `Esc` / `Delete`                                 |
+| Land / discard typed text   | `Ctrl+Enter` / `Esc`                             |
+| Undo / Redo                 | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`)          |
+| Zoom in / out / 100%        | `Ctrl++` / `Ctrl+-` / `Ctrl+0`, or `Ctrl`+scroll |
+| Quit                        | `Ctrl+Q`                                         |
 
-Images open in any format GdkPixbuf reads (PNG, JPEG, BMP, TIFF, WebP…) and are saved
-in the format matching the file extension, defaulting to PNG.
+## Opening and saving
+
+Images open in any format GdkPixbuf reads (PNG, JPEG, BMP, TIFF, WebP…), up to 8192 ×
+8192 pixels; a larger image is refused with a message rather than loaded. **Recent
+Files** in the main menu lists the last eight images you opened or saved; one that can
+no longer be opened is taken off the list when you pick it.
+
+Saving uses the format matching the file extension. A name typed without one gets
+`.png` added — Hue asks first if that would replace an existing file — and saving as
+JPEG asks for a quality from 1 to 100, remembering your last choice while the window is
+open. The image is
+written in full before it replaces the old file, so a save that fails, on a full disk
+say, leaves the original untouched. BMP and JPEG have no transparency, so transparent
+areas are saved as white; ICO files are limited to 256 × 256 pixels.
+
+The title shows `•` while there are unsaved changes, and undoing back to the image as
+it was last saved clears it again. Undo keeps up to 50 steps, fewer for very large
+images, since each step is a full copy of the picture: a 4000 × 3000 photo keeps around
+twenty.
+
+## Zooming
+
+`Ctrl`+scroll zooms around the pointer, so whatever is under it stays put; `Ctrl++` and
+`Ctrl+-` step through the usual levels between 10% and 800%, and `Ctrl+0` — or clicking
+the zoom level in the bottom bar — goes back to 100%. The same three are in the main
+menu. Every tool keeps working at any zoom, and from 100% up each image pixel shows as
+a crisp square, which makes pixel-level touch-ups with the pencil easy. The bottom bar
+also shows which image pixel the pointer is over.
 
 ## Resizing the canvas
 
@@ -127,11 +156,27 @@ move, the gap and the pixels in their new place, is a single `Ctrl+Z`.
 Because a drag that starts inside the rectangle moves it, press `Esc` first when what
 you want is to select a different area that overlaps the current one.
 
+With the select tool in hand, a selection has eight handles around it. Dragging one
+stretches or squashes the selected pixels, again with `Ctrl` to leave the original in
+place; the stretch keeps hard edges hard rather than blurring them. A floating paste
+has the same handles, so a screenshot can be scaled down before it lands. The arrow
+keys nudge a selection or a paste by one pixel, or ten with `Shift`, lifting the
+selection the first time the same way a drag would.
+
+`Ctrl+A` selects the whole image and switches to the select tool, and **Crop to
+Selection** in the main menu cuts the canvas down to just the selected rectangle.
+
 The selection outlives the tool that made it: `Ctrl+C` copies just that rectangle
 rather than the whole canvas, `Ctrl+X` cuts it out and `Delete` clears it to white
 without touching the clipboard, whichever tool is in hand. Only the select tool picks
 the pixels up, though — with a brush selected you paint over them as usual. `Esc`, or
 a click outside the rectangle while the select tool is in hand, drops the selection.
+
+## Rotating and flipping
+
+The main menu turns the whole image a quarter turn either way — swapping its width and
+height — or mirrors it left to right or top to bottom. A paste or text still floating
+is landed first and any selection is dropped; each is a single step to undo.
 
 ## Adding text
 
