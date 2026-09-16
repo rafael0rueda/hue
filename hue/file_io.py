@@ -21,6 +21,9 @@ EXTENSION_FORMATS = {
     ".ico": "ico",
 }
 FLATTEN_FORMATS = {"jpeg", "bmp"}
+# The ICO format stores its size in a byte, where 0 means 256.
+ICO_MAX_SIZE = 256
+DEFAULT_EXTENSION = ".png"
 LOAD_CHUNK = 64 * 1024
 
 
@@ -42,8 +45,8 @@ def image_filters() -> Gio.ListStore:
     return store
 
 
-def load_error(message: str) -> GLib.Error:
-    """A failure to read an image, raised the same way GdkPixbuf reports its own."""
+def image_error(message: str) -> GLib.Error:
+    """A failure to read or write an image, raised the way GdkPixbuf reports its own."""
     return GLib.Error.new_literal(Gio.io_error_quark(), message, Gio.IOErrorEnum.FAILED)
 
 
@@ -55,7 +58,7 @@ def check_image_size(width: int, height: int) -> None:
     """Refuse an image bigger than a canvas can be, before its pixels are copied."""
     if not fits(width, height):
         # Short enough for a toast at the window's default width.
-        raise load_error(f"Too large at {width} × {height} px (the limit is {MAX_SIZE})")
+        raise image_error(f"Too large at {width} × {height} px (the limit is {MAX_SIZE})")
 
 
 def load_surface(file: Gio.File) -> cairo.ImageSurface:
@@ -66,7 +69,7 @@ def load_surface(file: Gio.File) -> cairo.ImageSurface:
     """
     if file.get_path() is None:
         # Hue stays offline, so a web or network address is never fetched.
-        raise load_error(f"“{file.get_basename()}” is not a file on this computer")
+        raise image_error(f"“{file.get_basename()}” is not a file on this computer")
 
     declared = (0, 0)
 
@@ -111,6 +114,18 @@ def load_document(file: Gio.File) -> Document:
     return document
 
 
+def with_default_extension(file: Gio.File) -> Gio.File:
+    """The file to save to, with .png added when the name has no extension at all.
+
+    Without one the image would still be written as PNG, but under a name that
+    neither the file manager nor Hue's own Open dialog recognises as an image.
+    """
+    name = file.get_basename()
+    if os.path.splitext(name)[1]:
+        return file
+    return file.get_parent().get_child(name + DEFAULT_EXTENSION)
+
+
 def format_for(file: Gio.File) -> str:
     extension = os.path.splitext(file.get_path())[1].lower()
     return EXTENSION_FORMATS.get(extension, "png")
@@ -118,6 +133,8 @@ def format_for(file: Gio.File) -> str:
 
 def save_document(document: Document, file: Gio.File, quality: int = 90) -> None:
     image_format = format_for(file)
+    if image_format == "ico" and max(document.width, document.height) > ICO_MAX_SIZE:
+        raise image_error(f"ICO images can be at most {ICO_MAX_SIZE} × {ICO_MAX_SIZE} px")
 
     if image_format in FLATTEN_FORMATS:
         # These formats have no alpha channel, so composite onto white first.
@@ -140,7 +157,10 @@ def save_document(document: Document, file: Gio.File, quality: int = 90) -> None
         pixbuf = document.to_pixbuf()
 
     options = (["quality"], [str(quality)]) if image_format == "jpeg" else ([], [])
-    pixbuf.savev(file.get_path(), image_format, *options)
+    # Encoded in memory first, then swapped in whole: writing straight to the
+    # file would truncate the original before an encoder or a full disk failed.
+    _ok, data = pixbuf.save_to_bufferv(image_format, *options)
+    file.replace_contents(data, None, False, Gio.FileCreateFlags.NONE, None)
     document.file = file
     document.modified = False
     document.emit("state-changed")

@@ -10,7 +10,15 @@ import pytest
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
 
 from hue.document import MAX_SIZE, Document, new_surface
-from hue.file_io import format_for, image_filters, load_document, load_surface, save_document
+from hue.file_io import (
+    ICO_MAX_SIZE,
+    format_for,
+    image_filters,
+    load_document,
+    load_surface,
+    save_document,
+    with_default_extension,
+)
 
 from pixels import paint_pixel, pixel_at
 
@@ -45,6 +53,19 @@ def test_format_for_is_case_insensitive():
 def test_format_for_defaults_to_png_for_unknown_or_missing_extension():
     assert format_for(gio_file(Path("a.xyz"))) == "png"
     assert format_for(gio_file(Path("a"))) == "png"
+
+
+# with_default_extension
+
+
+def test_with_default_extension_adds_png_to_a_bare_name(tmp_path):
+    file = with_default_extension(gio_file(tmp_path / "drawing"))
+    assert file.get_path() == str(tmp_path / "drawing.png")
+
+
+def test_with_default_extension_keeps_a_name_that_has_one(tmp_path):
+    chosen = gio_file(tmp_path / "photo.jpg")
+    assert with_default_extension(chosen).equal(chosen)
 
 
 # image_filters
@@ -195,3 +216,36 @@ def test_save_document_flattens_transparency_onto_white_for_bmp(tmp_path):
     # and the opaque one round-trips losslessly.
     assert pixel_at(reloaded.surface, 0, 0) == (255, 255, 255, 255)
     assert pixel_at(reloaded.surface, 1, 0) == (255, 0, 0, 255)
+
+
+def test_a_failed_save_leaves_the_existing_file_untouched(tmp_path):
+    path = tmp_path / "icon.ico"
+    path.write_bytes(b"the original icon")
+    document = Document(new_surface(ICO_MAX_SIZE + 1, 16, WHITE))
+    document.modified = True
+
+    with pytest.raises(GLib.Error, match=f"at most {ICO_MAX_SIZE}"):
+        save_document(document, gio_file(path))
+
+    assert path.read_bytes() == b"the original icon"
+    assert document.file is None
+    assert document.modified is True
+
+
+def test_save_document_raises_rather_than_crashing_for_a_missing_folder(tmp_path):
+    with pytest.raises(GLib.Error):
+        save_document(Document(new_surface(1, 1, WHITE)), gio_file(tmp_path / "gone" / "out.png"))
+
+
+def test_save_document_writes_through_a_symlink(tmp_path):
+    target = tmp_path / "real.png"
+    write_png(target, 1, 1)
+    link = tmp_path / "link.png"
+    link.symlink_to(target)
+    document = Document(new_surface(3, 2, WHITE))
+
+    save_document(document, gio_file(link))
+
+    assert link.is_symlink()
+    reloaded = load_document(gio_file(target))
+    assert (reloaded.width, reloaded.height) == (3, 2)

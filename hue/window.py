@@ -10,7 +10,13 @@ from .canvas import Canvas
 from .clipboard import has_image, read_image, texture_from_surface
 from .color import ColorBar, ColorState
 from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_SIZE, Document, new_surface
-from .file_io import format_for, image_filters, load_document, save_document
+from .file_io import (
+    format_for,
+    image_filters,
+    load_document,
+    save_document,
+    with_default_extension,
+)
 from .recent_files import forget_recent, load_recent, remember_recent
 from .text import FONT_SIZE_RANGE, font_size, font_without_size, with_font_size
 from .tools import TOOL_CLASSES
@@ -624,12 +630,35 @@ class HueWindow(Adw.ApplicationWindow):
 
         def on_done(source, result):
             try:
-                file = source.save_finish(result)
+                chosen = source.save_finish(result)
             except GLib.Error:
                 return
-            self._write(file, then)
+            file = with_default_extension(chosen)
+            if not file.equal(chosen) and file.query_exists(None):
+                # The dialog only asked about replacing the name as typed.
+                self._confirm_replace(file, lambda: self._write(file, then))
+            else:
+                self._write(file, then)
 
         dialog.save(self, None, on_done)
+
+    def _confirm_replace(self, file: Gio.File, proceed) -> None:
+        dialog = Adw.AlertDialog(
+            heading=f"Replace “{file.get_basename()}”?",
+            body="A file with this name already exists. Saving will overwrite it.",
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("replace", "Replace")
+        dialog.set_response_appearance("replace", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def on_response(_dialog, response: str) -> None:
+            if response == "replace":
+                proceed()
+
+        dialog.connect("response", on_response)
+        dialog.present(self)
 
     def _write(self, file: Gio.File, then=None) -> None:
         if format_for(file) == "jpeg":
