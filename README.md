@@ -47,7 +47,9 @@ flatpak-builder --user --install --force-clean build flatpak/io.github.rafael0ru
 ```
 
 The manifest deliberately grants no network permission — the app has no reason to
-reach the network, and the sandbox enforces that.
+reach the network, and the sandbox enforces that. It grants no filesystem access
+either: Hue only sees the images you pick in the Open and Save dialogs, drop onto the
+canvas or copy from Files, all of which reach it through the desktop's file portal.
 
 ## Tools and shortcuts
 

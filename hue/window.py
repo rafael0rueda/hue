@@ -396,8 +396,6 @@ class HueWindow(Adw.ApplicationWindow):
         dialog.choose_font(self, Pango.FontDescription(self.canvas.font), None, on_done)
 
     def _on_color_picked(self, canvas, color, button) -> None:
-        from gi.repository import Gdk
-
         if button == Gdk.BUTTON_SECONDARY:
             self.colors.secondary = color
         else:
