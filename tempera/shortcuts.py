@@ -64,6 +64,7 @@ SHORTCUT_GROUPS: list[tuple[str, list[Shortcut]]] = [
         _("Image"),
         [
             Shortcut("win.resize", _("Canvas Size"), ("<Control>e",)),
+            Shortcut("win.scale", _("Resize Image"), ("<Control>r",)),
             Shortcut("win.crop", _("Crop to Selection"), ()),
             Shortcut("win.rotate-cw", _("Rotate Clockwise"), ()),
             Shortcut("win.rotate-ccw", _("Rotate Counterclockwise"), ()),
@@ -77,6 +78,7 @@ SHORTCUT_GROUPS: list[tuple[str, list[Shortcut]]] = [
             Shortcut("win.zoom-in", _("Zoom In"), ("<Control>plus", "<Control>equal", "<Control>KP_Add")),
             Shortcut("win.zoom-out", _("Zoom Out"), ("<Control>minus", "<Control>KP_Subtract")),
             Shortcut("win.zoom-reset", _("Reset Zoom"), ("<Control>0", "<Control>KP_0")),
+            Shortcut("win.zoom-fit", _("Zoom to Fit"), ("<Control>9", "<Control>KP_9")),
         ],
     ),
     (

@@ -3,7 +3,7 @@
 
 import cairo
 
-from tempera.canvas import ZOOM_MAX, ZOOM_MIN, ZOOM_PRESETS, Canvas
+from tempera.canvas import fit_zoom, ZOOM_MAX, ZOOM_MIN, ZOOM_PRESETS, Canvas
 from tempera.color import ColorState
 from tempera.document import Document, new_surface
 
@@ -113,3 +113,15 @@ def test_transparency_shows_the_checkerboard():
     assert pixel_at(screen, 3, 11) == dark
     assert pixel_at(screen, 11, 11) == light
     assert pixel_at(screen, 17, 3) == light
+
+
+# fit_zoom
+
+
+def test_fit_zoom_uses_the_tighter_side():
+    assert fit_zoom((800, 600), (400, 600)) == 0.5
+    assert fit_zoom((800, 600), (800, 300)) == 0.5
+
+
+def test_fit_zoom_enlarges_a_small_image():
+    assert fit_zoom((100, 100), (400, 400)) == 4.0

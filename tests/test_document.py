@@ -379,3 +379,54 @@ def test_crop_to_undoes_back_to_the_original_size():
     document.crop_to(0, 0, 1, 1)
     document.undo()
     assert (document.width, document.height) == (4, 4)
+
+
+# scale
+
+
+def test_scale_resamples_the_whole_picture():
+    document = Document(new_surface(4, 4, WHITE))
+    paint_pixel(document.surface, 0, 0, RED)
+    paint_pixel(document.surface, 1, 0, RED)
+    paint_pixel(document.surface, 0, 1, RED)
+    paint_pixel(document.surface, 1, 1, RED)
+
+    document.scale(8, 8)
+
+    assert (document.width, document.height) == (8, 8)
+    # The red quarter is still a quarter, now twice the size.
+    assert pixel_at(document.surface, 1, 1) == (255, 0, 0, 255)
+    assert pixel_at(document.surface, 7, 7) == (255, 255, 255, 255)
+
+
+def test_scale_shrinks_too():
+    document = Document(new_surface(8, 8, WHITE))
+    document.scale(2, 2)
+    assert (document.width, document.height) == (2, 2)
+
+
+def test_scale_can_be_undone():
+    document = Document(new_surface(4, 2, WHITE))
+    document.scale(40, 20)
+    document.undo()
+    assert (document.width, document.height) == (4, 2)
+
+
+def test_scale_to_the_same_size_is_a_no_op():
+    document = Document(new_surface(4, 4, WHITE))
+    document.scale(4, 4)
+    assert not document.can_undo
+
+
+def test_scale_stays_within_what_a_canvas_can_hold():
+    document = Document(new_surface(4, 4, WHITE))
+    document.scale(MAX_SIZE * 2, 0)
+    assert (document.width, document.height) == (MAX_SIZE, 1)
+
+
+def test_scaling_up_does_not_fade_the_edges():
+    """Sampling past the edge used to leave the right and bottom sides washed out."""
+    document = Document(new_surface(2, 2, RED))
+    document.scale(16, 16)
+    for x, y in ((0, 0), (15, 0), (0, 15), (15, 15), (8, 15)):
+        assert pixel_at(document.surface, x, y) == (255, 0, 0, 255)

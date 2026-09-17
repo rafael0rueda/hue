@@ -9,7 +9,7 @@ from gi.repository import Adw, Gio, GdkPixbuf, GLib, Gtk
 from tempera import recent_files, settings
 from tempera.document import new_surface
 from tempera.main import TemperaApplication
-from tempera.window import TemperaWindow
+from tempera.window import TemperaWindow, scaled_side
 
 from pixels import paint_pixel, pixel_at
 
@@ -375,3 +375,83 @@ def test_clear_recent_files_empties_the_menu(window, tmp_path):
 
     assert recent_files.load_recent() == []
     assert window._recent_menu.get_n_items() == 1
+
+
+def test_scaled_side_rounds_and_stays_in_range():
+    assert scaled_side(800, 50) == 400
+    assert scaled_side(3, 50) == 2
+    assert scaled_side(800, 0.01) == 1
+    assert scaled_side(8192, 1000) == 8192
+
+
+def test_resize_image_scales_the_picture(window):
+    window._prompt_scale_image()
+    dialog = window.get_visible_dialog()
+    width_spin, height_spin = (
+        child for child in dialog.get_extra_child().get_last_child()
+        if isinstance(child, Gtk.SpinButton)
+    )
+    width_spin.set_value(400)
+    # Keeping the ratio, the height follows the width.
+    assert height_spin.get_value() == 300
+
+    dialog.emit("response", "scale")
+    assert (window.canvas.document.width, window.canvas.document.height) == (400, 300)
+
+
+def test_zoom_to_fit_shows_the_whole_image(window):
+    window.present()
+    settle()
+    window.canvas.document.resize(4000, 3000)
+
+    window.activate_action("win.zoom-fit", None)
+
+    zoom = window.canvas.zoom
+    assert zoom < 1.0
+    assert 4000 * zoom <= window._canvas_card.get_width()
+    assert 3000 * zoom <= window._canvas_card.get_height()
+
+
+def test_an_image_larger_than_the_window_opens_zoomed_out(application, window, tmp_path):
+    window.present()
+    settle()
+    path = tmp_path / "big.png"
+    pixbuf = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 4000, 3000)
+    pixbuf.fill(0xFFFFFFFF)
+    pixbuf.savev(str(path), "png", [], [])
+
+    window._open_file(Gio.File.new_for_path(str(path)), "no: {message}")
+    assert settle_until(lambda: not window._busy)
+    settle()
+
+    assert window.canvas.zoom < 1.0
+
+
+def test_a_small_image_opens_at_full_size(window, tmp_path):
+    window.present()
+    settle()
+    window.canvas.zoom = 0.25
+    path = tmp_path / "small.png"
+    pixbuf = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 20, 20)
+    pixbuf.fill(0xFFFFFFFF)
+    pixbuf.savev(str(path), "png", [], [])
+
+    window._open_file(Gio.File.new_for_path(str(path)), "no: {message}")
+    assert settle_until(lambda: not window._busy)
+    settle()
+
+    assert window.canvas.zoom == 1.0
+
+
+def test_middle_drag_pans_the_view(window):
+    window.present()
+    settle()
+    window.canvas.document.resize(4000, 3000)
+    settle()
+    horizontal = window._canvas_card.get_hadjustment()
+    horizontal.set_value(300)
+
+    window.canvas._on_pan_begin(None, 0, 0)
+    window.canvas._on_pan_update(None, -50, 0)
+
+    assert horizontal.get_value() == 350

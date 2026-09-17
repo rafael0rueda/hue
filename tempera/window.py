@@ -36,6 +36,7 @@ IMAGE_ACTIONS = {
     "cut",
     "paste",
     "resize",
+    "scale",
     "crop",
     "rotate-cw",
     "rotate-ccw",
@@ -45,6 +46,11 @@ IMAGE_ACTIONS = {
 
 # The one size slider serves the brush and, with the text tool up, the font.
 BRUSH_SIZE_RANGE = (1, 64)
+
+
+def scaled_side(original: int, percent: float) -> int:
+    """One side of the image at a percentage of its size, within what a canvas can hold."""
+    return max(1, min(round(original * percent / 100), MAX_SIZE))
 
 
 class TemperaWindow(Adw.ApplicationWindow):
@@ -136,6 +142,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         edit_section.append(_("Paste"), "win.paste")
         menu.append_section(None, edit_section)
         image_section = Gio.Menu()
+        image_section.append(_("Resize Image…"), "win.scale")
         image_section.append(_("Crop to Selection"), "win.crop")
         image_section.append(_("Rotate Clockwise"), "win.rotate-cw")
         image_section.append(_("Rotate Counterclockwise"), "win.rotate-ccw")
@@ -146,6 +153,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         view_section.append(_("Zoom In"), "win.zoom-in")
         view_section.append(_("Zoom Out"), "win.zoom-out")
         view_section.append(_("Reset Zoom"), "win.zoom-reset")
+        view_section.append(_("Zoom to Fit"), "win.zoom-fit")
         palette_menu = Gio.Menu()
         palette_menu.append(_("Bottom"), "win.palette-position::bottom")
         palette_menu.append(_("Left"), "win.palette-position::left")
@@ -233,6 +241,8 @@ class TemperaWindow(Adw.ApplicationWindow):
         self._canvas_card = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
         self._canvas_card.add_css_class("tempera-canvas-area")
         self._canvas_card.set_child(CanvasFrame(self.canvas))
+        # Middle-drag to pan and pinch to zoom belong to the scrolling area.
+        self.canvas.attach_to_viewport(self._canvas_card)
         content.append(self._canvas_card)
 
         right_strip = self._build_palette_strip()
@@ -337,9 +347,11 @@ class TemperaWindow(Adw.ApplicationWindow):
             "shortcuts": lambda *_args: ShortcutsDialog(self.get_application()).present(self),
             "clear-recent": lambda *_args: self._clear_recent(),
             "resize": lambda *_args: self._prompt_canvas_size(),
+            "scale": lambda *_args: self._prompt_scale_image(),
             "zoom-in": lambda *_args: self.canvas.zoom_in(),
             "zoom-out": lambda *_args: self.canvas.zoom_out(),
             "zoom-reset": lambda *_args: self.canvas.reset_zoom(),
+            "zoom-fit": lambda *_args: self.canvas.zoom_to_fit(),
             "crop": lambda *_args: self.canvas.crop_to_selection(),
             "rotate-cw": lambda *_args: self._transform_image(lambda d: d.rotate(True)),
             "rotate-ccw": lambda *_args: self._transform_image(lambda d: d.rotate(False)),
@@ -493,6 +505,8 @@ class TemperaWindow(Adw.ApplicationWindow):
     def _set_document(self, document: Document) -> None:
         self.canvas.document = document
         self._watch_document()
+        # A photo larger than the window opens zoomed out to fit.
+        self.canvas.fit_if_too_large()
 
     def _sync_state(self) -> None:
         document = self.canvas.document
@@ -693,6 +707,97 @@ class TemperaWindow(Adw.ApplicationWindow):
             _("Resize"),
             document.resize,
         )
+
+    def _prompt_scale_image(self) -> None:
+        """Ask for a new size for the picture itself, in pixels or as a percentage."""
+        self.canvas.commit_floating()
+        self.canvas.clear_selection()
+        document = self.canvas.document
+        original = (document.width, document.height)
+
+        pixels = Gtk.ToggleButton(label=_("Pixels"), active=True)
+        percent = Gtk.ToggleButton(label=_("Percent"), group=pixels)
+        units = Gtk.Box(halign=Gtk.Align.CENTER, margin_top=12)
+        units.add_css_class("linked")
+        units.append(pixels)
+        units.append(percent)
+
+        spins = [Gtk.SpinButton.new_with_range(1, MAX_SIZE, 1) for _side in original]
+        width_spin, height_spin = spins
+        for spin, side in zip(spins, original):
+            spin.set_value(side)
+            spin.set_width_chars(len(str(MAX_SIZE)) + 1)
+        keep_ratio = Gtk.CheckButton(label=_("Keep aspect ratio"), active=True)
+
+        syncing = False
+
+        def in_percent() -> bool:
+            return percent.get_active()
+
+        def follow(changed: Gtk.SpinButton, other: Gtk.SpinButton, index: int) -> None:
+            """Keep the other side in proportion while the ratio is locked."""
+            nonlocal syncing
+            if syncing or not keep_ratio.get_active():
+                return
+            syncing = True
+            if in_percent():
+                other.set_value(changed.get_value())
+            else:
+                other.set_value(
+                    scaled_side(original[1 - index], changed.get_value() * 100 / original[index])
+                )
+            syncing = False
+
+        width_spin.connect("value-changed", lambda spin: follow(spin, height_spin, 0))
+        height_spin.connect("value-changed", lambda spin: follow(spin, width_spin, 1))
+
+        def switch_units(*_args) -> None:
+            nonlocal syncing
+            syncing = True
+            for spin, side in zip(spins, original):
+                value = spin.get_value()
+                if in_percent():
+                    spin.set_range(1, 1000)
+                    spin.set_value(round(value * 100 / side))
+                else:
+                    spin.set_range(1, MAX_SIZE)
+                    spin.set_value(scaled_side(side, value))
+            syncing = False
+
+        percent.connect("toggled", switch_units)
+
+        grid = Gtk.Grid(row_spacing=6, column_spacing=12, margin_top=12)
+        grid.attach(Gtk.Label(label=_("Width"), xalign=1), 0, 0, 1, 1)
+        grid.attach(width_spin, 1, 0, 1, 1)
+        grid.attach(Gtk.Label(label=_("Height"), xalign=1), 0, 1, 1, 1)
+        grid.attach(height_spin, 1, 1, 1, 1)
+        grid.attach(keep_ratio, 0, 2, 2, 1)
+
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        content.append(units)
+        content.append(grid)
+
+        dialog = Adw.AlertDialog(
+            heading=_("Resize image"),
+            body=_("The whole picture is stretched or shrunk to the new size."),
+        )
+        dialog.set_extra_child(content)
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("scale", _("Resize"))
+        dialog.set_response_appearance("scale", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("scale")
+        dialog.set_close_response("cancel")
+
+        def on_response(_dialog, response: str) -> None:
+            if response != "scale":
+                return
+            values = [spin.get_value() for spin in spins]
+            if in_percent():
+                values = [scaled_side(side, value) for side, value in zip(original, values)]
+            document.scale(int(values[0]), int(values[1]))
+
+        dialog.connect("response", on_response)
+        dialog.present(self)
 
     def _action_open(self, *_args) -> None:
         self._confirm_discard(self._show_open_dialog)

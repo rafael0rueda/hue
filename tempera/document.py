@@ -234,6 +234,33 @@ class Document(GObject.Object):
         self.surface = self._resized_surface(width, height, fill)
         self.commit_change()
 
+    def _scaled_surface(self, width: int, height: int) -> cairo.ImageSurface:
+        """The whole image resampled to a new size."""
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+        cr = cairo.Context(surface)
+        cr.set_operator(cairo.OPERATOR_SOURCE)
+        cr.scale(width / self.width, height / self.height)
+        cr.set_source_surface(self.surface, 0, 0)
+        # Smooth when shrinking or enlarging a photo; pixel art enlarged whole
+        # numbers of times still comes out crisp, since the samples line up.
+        cr.get_source().set_filter(cairo.FILTER_GOOD)
+        # Without this the sampling reads past the edge, where there is nothing,
+        # and leaves the right and bottom edges faded.
+        cr.get_source().set_extend(cairo.EXTEND_PAD)
+        cr.paint()
+        return surface
+
+    def scale(self, width: int, height: int) -> None:
+        """Stretch or shrink the picture itself, rather than the canvas around it."""
+        width = max(1, min(int(width), MAX_SIZE))
+        height = max(1, min(int(height), MAX_SIZE))
+        if (width, height) == (self.width, self.height):
+            return
+
+        self.begin_change()
+        self.surface = self._scaled_surface(width, height)
+        self.commit_change()
+
     def _rotated_surface(self, clockwise: bool) -> cairo.ImageSurface:
         surface = new_surface(self.height, self.width, (0.0, 0.0, 0.0, 0.0))
         cr = cairo.Context(surface)

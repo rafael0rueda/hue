@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from functools import cache
 
 import cairo
-from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Graphene, Gtk
 
 from .clipboard import surface_from_texture
 from .color import ColorState
@@ -39,6 +39,9 @@ ZOOM_MAX = 8.0
 ZOOM_PRESETS = [0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 8.0]
 # Multiplier per scroll-wheel notch while zooming.
 ZOOM_SCROLL_FACTOR = 1.1
+# Room left around the image by Zoom to Fit: the canvas margin on both sides,
+# plus the strip the resize grips need.
+FIT_PADDING = 2 * 24 + HANDLE_MARGIN
 # Breathing room between the typed text and its dashed outline.
 TEXT_PADDING = 3
 CARET_BLINK_MS = 530
@@ -170,6 +173,11 @@ def _checker_pattern() -> cairo.SurfacePattern:
     return pattern
 
 
+def fit_zoom(image: tuple[int, int], viewport: tuple[int, int]) -> float:
+    """The zoom at which an image just fits in the room available."""
+    return min(viewport[0] / image[0], viewport[1] / image[1])
+
+
 class Canvas(Gtk.DrawingArea):
     """Displays the document and routes pointer input to the active tool."""
 
@@ -205,6 +213,8 @@ class Canvas(Gtk.DrawingArea):
         self._drag_origin: tuple[float, float] | None = None
         self._drag_context: ToolContext | None = None
         self._resize_handle: str | None = None
+        self._pan_origin: tuple[float, float] | None = None
+        self._pinch_zoom = 1.0
         self._resize_size: tuple[int, int] | None = None
         self._paste: FloatingPaste | None = None
         self._paste_origin: tuple[float, float] | None = None
@@ -416,6 +426,101 @@ class Canvas(Gtk.DrawingArea):
 
     def reset_zoom(self) -> None:
         self.set_zoom(1.0)
+
+    def _viewport_size(self) -> tuple[int, int]:
+        scrolled = self.get_ancestor(Gtk.ScrolledWindow)
+        if scrolled is None:
+            return (0, 0)
+        return (scrolled.get_width() - FIT_PADDING, scrolled.get_height() - FIT_PADDING)
+
+    def zoom_to_fit(self) -> bool:
+        """Zoom so the whole image is in view. False while the window has no size yet."""
+        width, height = self._viewport_size()
+        if width <= 0 or height <= 0:
+            return False
+        self.set_zoom(fit_zoom((self._document.width, self._document.height), (width, height)))
+        return True
+
+    def fit_if_too_large(self) -> None:
+        """Open a photo bigger than the window zoomed out, rather than showing a corner of it.
+
+        Called as a document arrives, which may be before the window has been
+        given its size; then it waits for the first frame that has one.
+        """
+        def fit(*_args) -> bool:
+            width, height = self._viewport_size()
+            if width <= 0 or height <= 0:
+                return GLib.SOURCE_CONTINUE
+            if self._document.width > width or self._document.height > height:
+                self.zoom_to_fit()
+            else:
+                self.reset_zoom()
+            return GLib.SOURCE_REMOVE
+
+        if fit() is GLib.SOURCE_CONTINUE:
+            self.add_tick_callback(fit)
+
+    # Panning and pinching, on the scrolling area around the canvas
+
+    def attach_to_viewport(self, scrolled: Gtk.ScrolledWindow) -> None:
+        """Take middle-drag and pinch gestures from the area the canvas scrolls in.
+
+        They belong there rather than on the canvas itself, which moves under
+        the pointer as it scrolls, and whose own drag gesture is for drawing.
+        """
+        pan = Gtk.GestureDrag(
+            button=Gdk.BUTTON_MIDDLE, propagation_phase=Gtk.PropagationPhase.CAPTURE
+        )
+        pan.connect("drag-begin", self._on_pan_begin)
+        pan.connect("drag-update", self._on_pan_update)
+        pan.connect("drag-end", self._on_pan_end)
+        scrolled.add_controller(pan)
+
+        pinch = Gtk.GestureZoom()
+        pinch.connect("begin", self._on_pinch_begin)
+        pinch.connect("scale-changed", self._on_pinch_changed)
+        scrolled.add_controller(pinch)
+        self._pinch_zoom = 1.0
+
+    def _adjustments(self) -> tuple[Gtk.Adjustment, Gtk.Adjustment] | None:
+        scrolled = self.get_ancestor(Gtk.ScrolledWindow)
+        if scrolled is None:
+            return None
+        return scrolled.get_hadjustment(), scrolled.get_vadjustment()
+
+    def _on_pan_begin(self, gesture, start_x, start_y) -> None:
+        adjustments = self._adjustments()
+        if adjustments is None:
+            return
+        self._pan_origin = tuple(adjustment.get_value() for adjustment in adjustments)
+        self.set_cursor(Gdk.Cursor.new_from_name("grabbing"))
+
+    def _on_pan_update(self, gesture, offset_x, offset_y) -> None:
+        adjustments = self._adjustments()
+        if adjustments is None or self._pan_origin is None:
+            return
+        # Drag the image with the pointer: the view goes the other way.
+        for adjustment, origin, offset in zip(adjustments, self._pan_origin, (offset_x, offset_y)):
+            adjustment.set_value(origin - offset)
+
+    def _on_pan_end(self, gesture, offset_x, offset_y) -> None:
+        self._pan_origin = None
+        self._set_cursor(None)
+
+    def _on_pinch_begin(self, gesture, sequence) -> None:
+        self._pinch_zoom = self.zoom
+
+    def _on_pinch_changed(self, gesture, scale: float) -> None:
+        found, center = gesture.get_bounding_box_center()
+        anchor = None
+        if found:
+            scrolled = self.get_ancestor(Gtk.ScrolledWindow)
+            point = Graphene.Point()
+            point.init(center.x, center.y)
+            ok, here = scrolled.compute_point(self, point)
+            if ok:
+                anchor = (here.x, here.y)
+        self.set_zoom(self._pinch_zoom * scale, anchor=anchor)
 
     def _on_scroll(self, controller, dx: float, dy: float) -> bool:
         if not controller.get_current_event_state() & Gdk.ModifierType.CONTROL_MASK:
@@ -893,6 +998,9 @@ class Canvas(Gtk.DrawingArea):
         )
 
     def _on_drag_begin(self, gesture, start_x, start_y):
+        if gesture.get_current_button() == Gdk.BUTTON_MIDDLE:
+            # The middle button pans the view; it does not paint.
+            return
         start_x, start_y = self._to_image(start_x, start_y)
         self._drag_origin = (start_x, start_y)
 
