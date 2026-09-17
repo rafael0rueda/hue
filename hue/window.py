@@ -799,6 +799,13 @@ class HueWindow(Adw.ApplicationWindow):
         if self._closing:
             return False
 
+        # With nothing to ask about, let this close go ahead. Calling close()
+        # from inside the handler instead does nothing, since GTK ignores a
+        # close while it is still deciding on this one.
+        self.canvas.commit_floating()
+        if not self.canvas.document.modified:
+            return False
+
         def close():
             self._closing = True
             self.close()

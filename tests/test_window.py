@@ -167,3 +167,31 @@ def test_shortcuts_dialog_lists_every_shortcut(application, window):
     dialog._reset(shortcuts.SHORTCUTS["win.crop"])
     assert keys.get_accelerator() == ""
     assert not dialog._reset_all_row.get_sensitive()
+
+
+def settle():
+    context = GLib.MainContext.default()
+    while context.pending():
+        context.iteration(False)
+
+
+def test_unchanged_window_closes_on_the_first_try(application, window):
+    window.present()
+    settle()
+    window.close()
+    settle()
+    assert window not in application.get_windows()
+
+
+def test_unsaved_changes_are_asked_about_before_closing(application, window):
+    document = window.canvas.document
+    document.begin_change()
+    paint_pixel(document.surface, 0, 0, RED)
+    document.commit_change()
+
+    window.present()
+    settle()
+    window.close()
+    settle()
+    assert window in application.get_windows()
+    assert isinstance(window.get_visible_dialog(), Adw.AlertDialog)
