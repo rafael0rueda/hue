@@ -97,3 +97,48 @@ def test_remember_recent_leaves_no_temporary_file_behind(monkeypatch, tmp_path):
     path = use_tmp_recent_file(monkeypatch, tmp_path)
     recent_files.remember_recent(gio_file(tmp_path / "a.png"))
     assert [child.name for child in tmp_path.iterdir()] == [path.name]
+
+
+# the desktop's file-history switch
+
+
+def turn_history_off(monkeypatch):
+    monkeypatch.setattr(recent_files, "remembering_allowed", lambda: False)
+
+
+def test_nothing_is_recorded_while_file_history_is_off(monkeypatch, tmp_path):
+    path = use_tmp_recent_file(monkeypatch, tmp_path)
+    turn_history_off(monkeypatch)
+
+    assert recent_files.remember_recent(gio_file(tmp_path / "a.png")) == []
+
+    assert not path.exists()
+    assert recent_files.load_recent() == []
+
+
+def test_an_existing_list_is_hidden_while_file_history_is_off(monkeypatch, tmp_path):
+    use_tmp_recent_file(monkeypatch, tmp_path)
+    recent_files.remember_recent(gio_file(tmp_path / "a.png"))
+    turn_history_off(monkeypatch)
+    assert recent_files.load_recent() == []
+
+
+def test_remembering_is_allowed_when_the_desktop_has_no_such_setting(monkeypatch):
+    monkeypatch.setattr(Gio.SettingsSchemaSource, "get_default", staticmethod(lambda: None))
+    assert recent_files.remembering_allowed()
+
+
+def test_clear_recent_forgets_everything(monkeypatch, tmp_path):
+    path = use_tmp_recent_file(monkeypatch, tmp_path)
+    recent_files.remember_recent(gio_file(tmp_path / "a.png"))
+    assert path.exists()
+
+    assert recent_files.clear_recent() == []
+
+    assert not path.exists()
+    assert recent_files.load_recent() == []
+
+
+def test_clearing_an_empty_list_is_not_an_error(monkeypatch, tmp_path):
+    use_tmp_recent_file(monkeypatch, tmp_path)
+    assert recent_files.clear_recent() == []

@@ -4,6 +4,7 @@
 """The tests import straight from the source tree, so a module left out of the
 install list only shows up as a crash in the installed app. Catch it here."""
 
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -103,3 +104,16 @@ def test_release_notes_of_a_missing_or_broken_metainfo_are_none(tmp_path):
     assert release_notes(None) is None
     assert release_notes(tmp_path / "missing.xml") is None
     assert release_notes(broken) is None
+
+
+def test_the_flatpak_asks_for_nothing_it_does_not_need():
+    """The sandbox is the app's main defence: no network, no filesystem, no services."""
+    manifest = json.loads(
+        (ROOT / "flatpak" / "io.github.rafael0rueda.Tempera.json").read_text(encoding="utf-8")
+    )
+    assert set(manifest["finish-args"]) == {
+        "--socket=wayland",
+        "--socket=fallback-x11",
+        "--share=ipc",
+        "--device=dri",
+    }

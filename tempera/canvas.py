@@ -12,7 +12,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk
 from .clipboard import surface_from_texture
 from .color import ColorState
 from .document import MAX_SIZE, Document, crop_surface
-from .file_io import load_surface
+from .file_io import load_surface_async
 from .text import DEFAULT_FONT, TextBox
 from .tools import (
     SELECT_TOOL_ID,
@@ -740,20 +740,23 @@ class Canvas(Gtk.DrawingArea):
         if isinstance(value, Gdk.FileList):
             files = value.get_files()
             value = files[0] if files else None
-        try:
-            if isinstance(value, Gdk.Texture):
-                surface = surface_from_texture(value)
-            elif isinstance(value, Gio.File):
-                surface = load_surface(value)
-            else:
+
+        def paste_centred(surface: cairo.ImageSurface) -> None:
+            # Drop where the pointer let go, centred on the pasted image.
+            self.begin_paste(surface, x - surface.get_width() / 2, y - surface.get_height() / 2)
+
+        if isinstance(value, Gdk.Texture):
+            try:
+                paste_centred(surface_from_texture(value))
+            except GLib.Error as error:
+                self.emit("message", error.message)
                 return False
-        except GLib.Error as error:
-            # An unreadable or oversized file, or a format GdkPixbuf does not know.
-            self.emit("message", error.message)
-            return False
-        # Drop where the pointer let go, centred on the pasted image.
-        self.begin_paste(surface, x - surface.get_width() / 2, y - surface.get_height() / 2)
-        return True
+            return True
+        if isinstance(value, Gio.File):
+            # Read in the background: a dropped file can be large or on a slow disk.
+            load_surface_async(value, paste_centred, lambda message: self.emit("message", message))
+            return True
+        return False
 
     # Resize grips
 

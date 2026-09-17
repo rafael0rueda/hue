@@ -1,8 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Rafael Rueda
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import time
+
 import pytest
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, Gio, GdkPixbuf, GLib, Gtk
 
 from tempera import recent_files, settings
 from tempera.document import new_surface
@@ -177,6 +179,16 @@ def settle():
         context.iteration(False)
 
 
+def settle_until(condition, timeout=5.0):
+    """Keep the main loop turning until something a worker thread started has finished."""
+    context = GLib.MainContext.default()
+    deadline = time.monotonic() + timeout
+    while not condition() and time.monotonic() < deadline:
+        context.iteration(False)
+        time.sleep(0.002)
+    return condition()
+
+
 def test_unchanged_window_closes_on_the_first_try(application, window):
     window.present()
     settle()
@@ -210,6 +222,10 @@ def test_scrolling_over_the_zoom_level_steps_the_zoom(window):
     assert window.canvas.zoom < 1.0
 
 
+def load_recent_uris():
+    return " ".join(recent_files.load_recent())
+
+
 def test_a_floating_paste_is_asked_about_but_not_landed_on_close(application, window):
     window.canvas.begin_paste(new_surface(2, 2, RED), 0, 0)
 
@@ -241,10 +257,76 @@ def test_save_keeps_the_jpeg_quality_without_asking(window, tmp_path):
     settle()
 
     window.activate_action("win.save", None)
-    settle()
 
+    assert settle_until(lambda: not window._busy)
     assert path.stat().st_size > 0
     assert window.get_visible_dialog() is None
+
+
+def test_saving_shows_a_spinner_until_it_is_done(window, tmp_path):
+    path = tmp_path / "drawing.png"
+    window.canvas.document.file = Gio.File.new_for_path(str(path))
+
+    window.activate_action("win.save", None)
+    assert window._busy
+    assert window._busy_spinner.get_visible()
+
+    assert settle_until(lambda: not window._busy)
+    assert not window._busy_spinner.get_visible()
+    assert path.exists()
+
+
+def test_painting_while_a_save_runs_leaves_the_image_modified(window, tmp_path):
+    document = window.canvas.document
+    document.file = Gio.File.new_for_path(str(tmp_path / "drawing.png"))
+
+    window.activate_action("win.save", None)
+    # The save is encoding in a worker; this stroke is not in what it wrote.
+    document.begin_change()
+    paint_pixel(document.surface, 0, 0, RED)
+    document.commit_change()
+
+    assert settle_until(lambda: not window._busy)
+    assert document.modified
+
+
+def test_a_second_save_is_ignored_while_one_is_running(window, tmp_path):
+    window.canvas.document.file = Gio.File.new_for_path(str(tmp_path / "drawing.png"))
+    saves = []
+    window.canvas.document.connect("state-changed", lambda *_: saves.append(True))
+
+    window.activate_action("win.save", None)
+    window.activate_action("win.save", None)
+
+    assert settle_until(lambda: not window._busy)
+    assert not window._busy
+
+
+def test_opening_an_image_reads_it_in_the_background(window, tmp_path):
+    path = tmp_path / "picture.png"
+    pixbuf = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 7, 3)
+    pixbuf.fill(0xFFFFFFFF)
+    pixbuf.savev(str(path), "png", [], [])
+
+    window._open_file(Gio.File.new_for_path(str(path)), "no: {message}")
+    assert window._busy
+
+    assert settle_until(lambda: not window._busy)
+    assert (window.canvas.document.width, window.canvas.document.height) == (7, 3)
+    assert str(path) in load_recent_uris()
+
+
+def test_an_image_that_cannot_be_read_says_so_and_keeps_the_old_one(window, tmp_path):
+    path = tmp_path / "broken.png"
+    path.write_text("not a picture")
+    before = window.canvas.document
+    forgotten = []
+
+    window._open_file(Gio.File.new_for_path(str(path)), "no: {message}", lambda: forgotten.append(True))
+
+    assert settle_until(lambda: not window._busy)
+    assert window.canvas.document is before
+    assert forgotten
 
 
 def test_save_asks_where_for_an_image_it_cannot_write_back(window, tmp_path, monkeypatch):
@@ -279,3 +361,17 @@ def test_quit_closes_every_window_asking_about_unsaved_ones(application, window)
         assert isinstance(changed.get_visible_dialog(), Adw.AlertDialog)
     finally:
         changed.destroy()
+
+
+def test_clear_recent_files_empties_the_menu(window, tmp_path):
+    path = tmp_path / "picture.png"
+    pixbuf = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 2, 2)
+    pixbuf.fill(0xFFFFFFFF)
+    pixbuf.savev(str(path), "png", [], [])
+    window._remember_recent(Gio.File.new_for_path(str(path)))
+    assert recent_files.load_recent()
+
+    window.activate_action("win.clear-recent", None)
+
+    assert recent_files.load_recent() == []
+    assert window._recent_menu.get_n_items() == 1

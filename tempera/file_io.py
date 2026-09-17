@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import os
+import threading
+from typing import Callable
 
 import cairo
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
@@ -36,6 +38,9 @@ OPEN_MIME_TYPES = (
 ICO_MAX_SIZE = 256
 DEFAULT_EXTENSION = ".png"
 LOAD_CHUNK = 64 * 1024
+# No image that fits on a canvas is anywhere near this big; an uncompressed
+# 8192 × 8192 TIFF, the worst case Tempera can hold, is about 256 MB.
+MAX_FILE_BYTES = 512 * 1024 * 1024
 
 
 def image_filters() -> Gio.ListStore:
@@ -72,17 +77,37 @@ def check_image_size(width: int, height: int) -> None:
         raise image_error(f"Too large at {width} × {height} px (the limit is {MAX_SIZE})")
 
 
+def check_readable(file: Gio.File) -> None:
+    """Refuse anything that is not an ordinary local file of a sensible size.
+
+    Reading from a named pipe or a device such as /dev/zero would otherwise
+    never finish, hanging the app with no way out.
+    """
+    if file.get_path() is None:
+        # Tempera stays offline, so a web or network address is never fetched.
+        raise image_error(f"“{file.get_basename()}” is not a file on this computer")
+
+    info = file.query_info(
+        "standard::type,standard::size", Gio.FileQueryInfoFlags.NONE, None
+    )
+    if info.get_file_type() != Gio.FileType.REGULAR:
+        raise image_error(f"“{file.get_basename()}” is not an ordinary file")
+    size = info.get_size()
+    if size > MAX_FILE_BYTES:
+        limit = MAX_FILE_BYTES // (1024 * 1024)
+        raise image_error(f"Too big at {size // (1024 * 1024)} MB (the limit is {limit} MB)")
+
+
 def load_surface(file: Gio.File) -> cairo.ImageSurface:
     """Decode an image file into a surface, raising GLib.Error when it cannot be.
 
     A small file can declare enormous dimensions, so the size is checked as soon
     as the loader has read the header rather than after decoding gigabytes.
     """
-    if file.get_path() is None:
-        # Tempera stays offline, so a web or network address is never fetched.
-        raise image_error(f"“{file.get_basename()}” is not a file on this computer")
+    check_readable(file)
 
     declared = (0, 0)
+    read_bytes = 0
 
     def on_size_prepared(loader, width, height):
         nonlocal declared
@@ -97,10 +122,12 @@ def load_surface(file: Gio.File) -> cairo.ImageSurface:
     loader = GdkPixbuf.PixbufLoader()
     loader.connect("size-prepared", on_size_prepared)
     try:
-        while fits(*declared):
+        while fits(*declared) and read_bytes <= MAX_FILE_BYTES:
             chunk = stream.read_bytes(LOAD_CHUNK, None)
             if chunk.get_size() == 0:
                 break
+            # A file can grow, or report a size it does not keep to.
+            read_bytes += chunk.get_size()
             loader.write_bytes(chunk)
         loader.close()
     except GLib.Error:
@@ -153,7 +180,12 @@ def format_for(file: Gio.File) -> str | None:
     return EXTENSION_FORMATS.get(extension)
 
 
-def save_document(document: Document, file: Gio.File, quality: int = 90) -> None:
+def image_to_save(document: Document, file: Gio.File) -> tuple[GdkPixbuf.Pixbuf, str]:
+    """The pixels to write and the format to write them in, or raise if it cannot be done.
+
+    Taken on the main thread, before the encoding goes off to a worker: it is a
+    copy, so painting on while the file is written cannot change what is saved.
+    """
     image_format = format_for(file)
     if image_format is None:
         extension = os.path.splitext(file.get_basename())[1] or "without an extension"
@@ -180,12 +212,101 @@ def save_document(document: Document, file: Gio.File, quality: int = 90) -> None
         )
     else:
         pixbuf = document.to_pixbuf()
+    return pixbuf, image_format
 
+
+def encode_image(pixbuf: GdkPixbuf.Pixbuf, image_format: str, quality: int) -> GLib.Bytes:
+    """Encode the image in memory. Slow for a large picture, so worth a worker thread."""
     options = (["quality"], [str(quality)]) if image_format == "jpeg" else ([], [])
+    _ok, data = pixbuf.save_to_bufferv(image_format, *options)
+    return GLib.Bytes.new(data)
+
+
+def save_document(document: Document, file: Gio.File, quality: int = 90) -> None:
+    """Save now, in this thread. The window uses save_document_async instead."""
+    pixbuf, image_format = image_to_save(document, file)
+    depth = document.save_point()
+    data = encode_image(pixbuf, image_format, quality)
     # Encoded in memory first, then swapped in whole: writing straight to the
     # file would truncate the original before an encoder or a full disk failed.
-    _ok, data = pixbuf.save_to_bufferv(image_format, *options)
-    file.replace_contents(data, None, False, Gio.FileCreateFlags.NONE, None)
+    file.replace_contents(data.get_data(), None, False, Gio.FileCreateFlags.NONE, None)
     document.file = file
-    document.modified = False
-    document.emit("state-changed")
+    document.mark_saved(depth)
+
+
+def _in_thread(work: Callable[[], object], done: Callable[[object | GLib.Error], None]) -> None:
+    """Run work off the UI thread and hand what it returns, or raises, back to it."""
+
+    def run():
+        try:
+            result = work()
+        except GLib.Error as error:
+            result = error
+        GLib.idle_add(lambda: (done(result), False)[1])
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+def load_surface_async(
+    file: Gio.File,
+    on_surface: Callable[[cairo.ImageSurface], None],
+    on_error: Callable[[str], None],
+) -> None:
+    """Decode an image in the background, so a big or slow file does not freeze the window."""
+
+    def done(result):
+        if isinstance(result, GLib.Error):
+            on_error(result.message)
+        else:
+            on_surface(result)
+
+    _in_thread(lambda: load_surface(file), done)
+
+
+def load_document_async(
+    file: Gio.File,
+    on_document: Callable[[Document], None],
+    on_error: Callable[[str], None],
+) -> None:
+    def on_surface(surface: cairo.ImageSurface) -> None:
+        document = Document(surface)
+        document.file = file
+        on_document(document)
+
+    load_surface_async(file, on_surface, on_error)
+
+
+def save_document_async(
+    document: Document,
+    file: Gio.File,
+    on_saved: Callable[[], None],
+    on_error: Callable[[str], None],
+    quality: int = 90,
+) -> None:
+    """Encode in the background and write asynchronously, marking what was written as saved."""
+    try:
+        pixbuf, image_format = image_to_save(document, file)
+    except GLib.Error as error:
+        on_error(error.message)
+        return
+    depth = document.save_point()
+
+    def on_written(source, result):
+        try:
+            source.replace_contents_finish(result)
+        except GLib.Error as error:
+            on_error(error.message)
+            return
+        document.file = file
+        document.mark_saved(depth)
+        on_saved()
+
+    def done(result):
+        if isinstance(result, GLib.Error):
+            on_error(result.message)
+            return
+        file.replace_contents_bytes_async(
+            result, None, False, Gio.FileCreateFlags.NONE, None, on_written
+        )
+
+    _in_thread(lambda: encode_image(pixbuf, image_format, quality), done)

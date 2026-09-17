@@ -129,6 +129,20 @@ class Document(GObject.Object):
         # where the saved one was.
         self._saved_depth = None if value else len(self._undo)
 
+    def save_point(self) -> int:
+        """How deep the history is now, to mark as saved once a save finishes."""
+        return len(self._undo)
+
+    def mark_saved(self, depth: int) -> None:
+        """Take the image at that point in the history as the saved one.
+
+        Saving encodes and writes in the background, so the user may have drawn
+        on since; the marker belongs to what was written, not to what is on
+        screen now.
+        """
+        self._saved_depth = depth
+        self.emit("state-changed")
+
     def begin_change(self) -> None:
         """Snapshot the surface so the coming edit can be undone."""
         self._pending = (self._redo, self._saved_depth)

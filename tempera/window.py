@@ -13,12 +13,12 @@ from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_SIZE, Document, new_sur
 from .file_io import (
     format_for,
     image_filters,
-    load_document,
+    load_document_async,
     save_as_name,
-    save_document,
+    save_document_async,
     with_default_extension,
 )
-from .recent_files import forget_recent, load_recent, remember_recent
+from .recent_files import clear_recent, forget_recent, load_recent, remember_recent
 from .settings import PALETTE_POSITIONS, load_palette_position, save_palette_position
 from .shortcuts_dialog import ShortcutsDialog
 from .text import FONT_SIZE_RANGE, font_size, font_without_size, with_font_size
@@ -63,6 +63,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         self.canvas.connect("pointer-left", lambda *_: self._cursor_label.set_label(""))
         self.canvas.connect("message", lambda _canvas, message: self.show_toast(message))
         self._closing = False
+        self._busy = False
         self._typing = False
         self._syncing_size = False
         self._last_jpeg_quality = 90
@@ -164,8 +165,13 @@ class TemperaWindow(Adw.ApplicationWindow):
         menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic", tooltip_text="Main menu")
         menu_button.set_menu_model(menu)
 
+        # Shown while an image is being read or written, which happens off the
+        # UI thread so that a large file does not freeze the window.
+        self._busy_spinner = Adw.Spinner(visible=False, tooltip_text="Working…")
+
         header.pack_end(menu_button)
         header.pack_end(history)
+        header.pack_end(self._busy_spinner)
         return header
 
     def _build_bottom_bar(self) -> Gtk.Widget:
@@ -322,6 +328,7 @@ class TemperaWindow(Adw.ApplicationWindow):
             "paste": lambda *_: self._paste(),
             "swap-colors": lambda *_: self.colors.swap(),
             "shortcuts": lambda *_: ShortcutsDialog(self.get_application()).present(self),
+            "clear-recent": lambda *_: self._clear_recent(),
             "resize": lambda *_: self._prompt_canvas_size(),
             "zoom-in": lambda *_: self.canvas.zoom_in(),
             "zoom-out": lambda *_: self.canvas.zoom_out(),
@@ -373,6 +380,11 @@ class TemperaWindow(Adw.ApplicationWindow):
                 callback(*args)
 
         return handler
+
+    def _set_busy(self, busy: bool) -> None:
+        """Show that a file is being read or written, and let only one run at a time."""
+        self._busy = busy
+        self._busy_spinner.set_visible(busy)
 
     def _on_tool_changed(self, action, value: GLib.Variant) -> None:
         self.canvas.commit_floating()
@@ -672,6 +684,8 @@ class TemperaWindow(Adw.ApplicationWindow):
         self._confirm_discard(self._show_open_dialog)
 
     def _show_open_dialog(self) -> None:
+        if self._busy:
+            return
         dialog = Gtk.FileDialog(title="Open Image", filters=image_filters())
 
         def on_done(source, result):
@@ -679,14 +693,26 @@ class TemperaWindow(Adw.ApplicationWindow):
                 file = source.open_finish(result)
             except GLib.Error:
                 return
-            try:
-                self._set_document(load_document(file))
-            except GLib.Error as error:
-                self.show_toast(f"Could not open image: {error.message}")
-                return
-            self._remember_recent(file)
+            self._open_file(file, "Could not open image: {message}")
 
         dialog.open(self, None, on_done)
+
+    def _open_file(self, file: Gio.File, error_format: str, on_error=None) -> None:
+        """Read an image in the background and show it, or say why it could not be."""
+        self._set_busy(True)
+
+        def on_document(document: Document) -> None:
+            self._set_busy(False)
+            self._set_document(document)
+            self._remember_recent(file)
+
+        def on_error_message(message: str) -> None:
+            self._set_busy(False)
+            self.show_toast(error_format.format(message=message))
+            if on_error is not None:
+                on_error()
+
+        load_document_async(file, on_document, on_error_message)
 
     def _refresh_recent_menu(self) -> None:
         self._recent_menu.remove_all()
@@ -694,10 +720,20 @@ class TemperaWindow(Adw.ApplicationWindow):
         if not recent:
             self._recent_menu.append("No Recent Files", None)
             return
+        files = Gio.Menu()
         for uri in recent:
             item = Gio.MenuItem.new(Gio.File.new_for_uri(uri).get_basename(), None)
             item.set_action_and_target_value("win.open-recent", GLib.Variant.new_string(uri))
-            self._recent_menu.append_item(item)
+            files.append_item(item)
+        self._recent_menu.append_section(None, files)
+        clearing = Gio.Menu()
+        clearing.append("Clear Recent Files", "win.clear-recent")
+        self._recent_menu.append_section(None, clearing)
+
+    def _clear_recent(self) -> None:
+        clear_recent()
+        self._refresh_recent_menu()
+        self.show_toast("Cleared the recent files")
 
     def _remember_recent(self, file: Gio.File) -> None:
         remember_recent(file)
@@ -708,18 +744,18 @@ class TemperaWindow(Adw.ApplicationWindow):
 
         def proceed():
             file = Gio.File.new_for_uri(uri)
-            try:
-                self._set_document(load_document(file))
-            except GLib.Error as error:
-                self.show_toast(f"Could not open “{file.get_basename()}”: {error.message}")
+
+            def forget():
                 forget_recent(uri)
                 self._refresh_recent_menu()
-                return
-            self._remember_recent(file)
+
+            self._open_file(file, f"Could not open “{file.get_basename()}”: {{message}}", forget)
 
         self._confirm_discard(proceed)
 
     def _save(self, then=None) -> None:
+        if self._busy:
+            return
         # What gets written should match what is on screen.
         self.canvas.commit_floating()
         document = self.canvas.document
@@ -732,6 +768,8 @@ class TemperaWindow(Adw.ApplicationWindow):
         self._write_now(document.file, then, self._last_jpeg_quality)
 
     def _save_as(self, then=None) -> None:
+        if self._busy:
+            return
         self.canvas.commit_floating()
         document = self.canvas.document
         dialog = Gtk.FileDialog(title="Save Image", filters=image_filters())
@@ -805,18 +843,21 @@ class TemperaWindow(Adw.ApplicationWindow):
         dialog.present(self)
 
     def _write_now(self, file: Gio.File, then, quality: int | None) -> None:
-        try:
-            if quality is None:
-                save_document(self.canvas.document, file)
-            else:
-                save_document(self.canvas.document, file, quality=quality)
-        except GLib.Error as error:
-            self.show_toast(f"Could not save image: {error.message}")
-            return
-        self.show_toast(f"Saved {file.get_basename()}")
-        self._remember_recent(file)
-        if then is not None:
-            then()
+        self._set_busy(True)
+
+        def on_saved() -> None:
+            self._set_busy(False)
+            self.show_toast(f"Saved {file.get_basename()}")
+            self._remember_recent(file)
+            if then is not None:
+                then()
+
+        def on_error(message: str) -> None:
+            self._set_busy(False)
+            self.show_toast(f"Could not save image: {message}")
+
+        arguments = {} if quality is None else {"quality": quality}
+        save_document_async(self.canvas.document, file, on_saved, on_error, **arguments)
 
     def _on_close_request(self, *_) -> bool:
         if self._closing:

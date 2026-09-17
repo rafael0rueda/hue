@@ -121,7 +121,11 @@ from the defaults are stored, and **Reset All Shortcuts** puts everything back.
 ## Opening and saving
 
 Images open in any format GdkPixbuf reads (PNG, JPEG, BMP, TIFF, WebP, GIF, ICO…), up
-to 8192 × 8192 pixels; a larger image is refused with a message rather than loaded.
+to 8192 × 8192 pixels; a larger image is refused with a message rather than loaded, as
+is anything that is not an ordinary file, such as a named pipe. Reading and writing
+happen in the background, with a spinner in the header bar, so a large image or a slow
+disk never freezes the window; you can keep drawing while a save finishes, and the file
+holds the image as it was when you asked to save it.
 Photos open the right way up, following the orientation the camera or phone recorded.
 **Recent Files** in the main menu lists the last eight images you opened or saved; one
 that can no longer be opened is taken off the list when you pick it.
@@ -253,6 +257,22 @@ editing it, only `Ctrl+Z`. Text that runs off the right or bottom edge grows the
 the same way a paste does. Because the image should look the same everywhere, the text
 is laid out at 96 dpi regardless of the desktop's text scaling, so a size of 24 always
 gives the same pixels.
+
+## Privacy
+
+Tempera works entirely offline: no network, no update checks, no telemetry, no accounts.
+The Flatpak has no network permission, so the sandbox enforces it.
+
+Saved images carry no metadata — no EXIF, no camera details, no location — even when the
+image you opened had them. The orientation an EXIF tag asked for is applied to the pixels
+as the photo opens, so nothing is lost by dropping the rest.
+
+**Recent Files** keeps the last eight names in `~/.config/tempera/recent-files.txt`. It
+follows GNOME's **Settings › Privacy › File History** switch: with that off, nothing is
+recorded and the list stays empty. **Clear Recent Files** in the menu empties it at any
+time.
+
+[SECURITY.md](SECURITY.md) explains how to report a security problem.
 
 ## Theming
 

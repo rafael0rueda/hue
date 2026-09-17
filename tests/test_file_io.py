@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Rafael Rueda
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import os
 import resource
 import struct
 import zlib
@@ -12,6 +13,7 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
 from tempera.document import MAX_SIZE, Document, new_surface
 from tempera.file_io import (
     ICO_MAX_SIZE,
+    MAX_FILE_BYTES,
     OPEN_MIME_TYPES,
     format_for,
     image_filters,
@@ -333,3 +335,69 @@ def test_save_document_writes_through_a_symlink(tmp_path):
     assert link.is_symlink()
     reloaded = load_document(gio_file(target))
     assert (reloaded.width, reloaded.height) == (3, 2)
+
+
+# files that are not ordinary images
+
+
+def test_load_surface_refuses_a_named_pipe(tmp_path):
+    path = tmp_path / "pipe.png"
+    os.mkfifo(path)
+    # Reading one would block for as long as nothing writes to it.
+    with pytest.raises(GLib.Error, match="not an ordinary file"):
+        load_surface(gio_file(path))
+
+
+def test_load_surface_refuses_a_directory(tmp_path):
+    with pytest.raises(GLib.Error, match="not an ordinary file"):
+        load_surface(gio_file(tmp_path))
+
+
+def test_load_surface_refuses_a_file_far_too_big_to_be_an_image(tmp_path, monkeypatch):
+    path = tmp_path / "huge.png"
+    write_png(path, 2, 2)
+    monkeypatch.setattr("tempera.file_io.MAX_FILE_BYTES", 8)
+    with pytest.raises(GLib.Error, match="the limit is"):
+        load_surface(gio_file(path))
+
+
+def test_the_file_size_limit_leaves_room_for_the_largest_image():
+    # An uncompressed RGBA image of the largest canvas, and then some.
+    assert MAX_FILE_BYTES > MAX_SIZE * MAX_SIZE * 4
+
+
+def encoded(image_format: str) -> bytes:
+    pixbuf = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, image_format == "png", 8, 16, 16)
+    pixbuf.fill(0x3366CCFF)
+    _ok, data = pixbuf.save_to_bufferv(image_format, [], [])
+    return data
+
+
+@pytest.mark.parametrize("image_format", ["png", "jpeg", "bmp", "tiff"])
+def test_a_damaged_file_is_refused_or_read_but_never_crashes(tmp_path, image_format):
+    """Decoders see files from anywhere, so they must fail politely, not take the app down."""
+    good = encoded(image_format)
+    path = tmp_path / f"damaged.{image_format}"
+    for broken in (good[: len(good) // 2], good[:8], good[::-1], bytes(len(good))):
+        path.write_bytes(broken)
+        try:
+            surface = load_surface(gio_file(path))
+        except GLib.Error:
+            continue
+        # Whatever it made of it still has to be a sane image.
+        assert 0 < surface.get_width() <= MAX_SIZE
+        assert 0 < surface.get_height() <= MAX_SIZE
+
+
+def test_saving_writes_no_camera_metadata(tmp_path):
+    """Photos carry EXIF, including where they were taken; a saved copy must not."""
+    source = tmp_path / "photo.jpg"
+    source.write_bytes(jpeg_with_orientation(6))
+    document = Document(load_surface(gio_file(source)))
+
+    saved = tmp_path / "copy.jpg"
+    save_document(document, gio_file(saved))
+
+    written = saved.read_bytes()
+    assert b"Exif" not in written
+    assert b"\xff\xe1" not in written[:4096]
