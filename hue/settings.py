@@ -16,6 +16,7 @@ PALETTE_POSITIONS = ("bottom", "left", "right")
 DEFAULT_PALETTE_POSITION = "bottom"
 
 _SECTION = "view"
+_SHORTCUTS_SECTION = "shortcuts"
 
 
 def _settings_path() -> Path:
@@ -23,7 +24,10 @@ def _settings_path() -> Path:
 
 
 def _load() -> configparser.ConfigParser:
-    parser = configparser.ConfigParser(interpolation=None)
+    # Shortcut keys are action names such as "win.tool::pencil", so ":" cannot
+    # be a delimiter, and they are case-sensitive.
+    parser = configparser.ConfigParser(interpolation=None, delimiters=("=",))
+    parser.optionxform = str
     try:
         parser.read_string(_settings_path().read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, configparser.Error):
@@ -41,7 +45,28 @@ def save_palette_position(position: str) -> None:
     if not parser.has_section(_SECTION):
         parser.add_section(_SECTION)
     parser.set(_SECTION, "palette-position", position)
+    _save(parser)
 
+
+def load_shortcut_overrides() -> dict[str, list[str]]:
+    """Shortcuts changed from their defaults: action -> accelerators, [] for disabled."""
+    parser = _load()
+    if not parser.has_section(_SHORTCUTS_SECTION):
+        return {}
+    return {action: value.split() for action, value in parser.items(_SHORTCUTS_SECTION)}
+
+
+def save_shortcut_overrides(overrides: dict[str, list[str]]) -> None:
+    parser = _load()
+    parser.remove_section(_SHORTCUTS_SECTION)
+    if overrides:
+        parser.add_section(_SHORTCUTS_SECTION)
+        for action, accels in sorted(overrides.items()):
+            parser.set(_SHORTCUTS_SECTION, action, " ".join(accels))
+    _save(parser)
+
+
+def _save(parser: configparser.ConfigParser) -> None:
     path = _settings_path()
     temporary = path.with_name(path.name + ".tmp")
     try:

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
-from . import APP_NAME
+from . import APP_NAME, shortcuts
 from .canvas import Canvas, CanvasFrame
 from .clipboard import has_image, read_image, texture_from_surface
 from .color import ColorBar, ColorState
@@ -19,6 +19,7 @@ from .file_io import (
 )
 from .recent_files import forget_recent, load_recent, remember_recent
 from .settings import PALETTE_POSITIONS, load_palette_position, save_palette_position
+from .shortcuts_dialog import ShortcutsDialog
 from .text import FONT_SIZE_RANGE, font_size, font_without_size, with_font_size
 from .tools import TOOL_CLASSES
 
@@ -42,19 +43,6 @@ IMAGE_ACTIONS = {
 
 # The one size slider serves the brush and, with the text tool up, the font.
 BRUSH_SIZE_RANGE = (1, 64)
-
-TOOL_ACCELS = {
-    "pencil": "p",
-    "brush": "b",
-    "eraser": "e",
-    "line": "l",
-    "rectangle": "r",
-    "ellipse": "o",
-    "text": "t",
-    "fill": "f",
-    "picker": "k",
-    "select": "s",
-}
 
 
 class HueWindow(Adw.ApplicationWindow):
@@ -81,7 +69,10 @@ class HueWindow(Adw.ApplicationWindow):
         self._title = Adw.WindowTitle(title=APP_NAME)
         self.toasts = Adw.ToastOverlay()
         self._recent_menu = Gio.Menu()
+        # Widgets whose tooltip names a shortcut: (widget, text, action).
+        self._shortcut_tooltips: list[tuple[Gtk.Widget, str, str]] = []
         self._color_bar = ColorBar(self.colors)
+        self._add_shortcut_tooltip(self._color_bar.swap_button, "Swap colors", "win.swap-colors")
         # Where the palette can go: position -> (slot it sits in, strip to show).
         self._palette_slots: dict[str, tuple[Gtk.Box, Gtk.Box | None]] = {}
 
@@ -106,21 +97,23 @@ class HueWindow(Adw.ApplicationWindow):
         header.set_title_widget(self._title)
 
         for icon, action, tooltip in (
-            ("hue-new-symbolic", "win.new", "New image (Ctrl+N)"),
-            ("document-open-symbolic", "win.open", "Open image (Ctrl+O)"),
-            ("hue-save-symbolic", "win.save", "Save (Ctrl+S)"),
+            ("hue-new-symbolic", "win.new", "New image"),
+            ("document-open-symbolic", "win.open", "Open image"),
+            ("hue-save-symbolic", "win.save", "Save"),
         ):
-            button = Gtk.Button(icon_name=icon, tooltip_text=tooltip)
+            button = Gtk.Button(icon_name=icon)
+            self._add_shortcut_tooltip(button, tooltip, action)
             button.set_action_name(action)
             header.pack_start(button)
 
         history = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         history.add_css_class("linked")
         for icon, action, tooltip in (
-            ("hue-undo-symbolic", "win.undo", "Undo (Ctrl+Z)"),
-            ("hue-redo-symbolic", "win.redo", "Redo (Ctrl+Shift+Z)"),
+            ("hue-undo-symbolic", "win.undo", "Undo"),
+            ("hue-redo-symbolic", "win.redo", "Redo"),
         ):
-            button = Gtk.Button(icon_name=icon, tooltip_text=tooltip)
+            button = Gtk.Button(icon_name=icon)
+            self._add_shortcut_tooltip(button, tooltip, action)
             button.set_action_name(action)
             history.append(button)
 
@@ -154,6 +147,7 @@ class HueWindow(Adw.ApplicationWindow):
         file_section.append("Canvas Size…", "win.resize")
         menu.append_section(None, file_section)
         app_section = Gio.Menu()
+        app_section.append("Keyboard Shortcuts", "win.shortcuts")
         app_section.append(f"About {APP_NAME}", "app.about")
         app_section.append("Quit", "app.quit")
         menu.append_section(None, app_section)
@@ -182,7 +176,8 @@ class HueWindow(Adw.ApplicationWindow):
 
         self._zoom_label = Gtk.Label()
         self._zoom_label.add_css_class("numeric")
-        zoom_button = Gtk.Button(tooltip_text="Reset zoom (Ctrl+0)")
+        zoom_button = Gtk.Button()
+        self._add_shortcut_tooltip(zoom_button, "Reset zoom", "win.zoom-reset")
         zoom_button.set_child(self._zoom_label)
         zoom_button.add_css_class("flat")
         zoom_button.set_valign(Gtk.Align.CENTER)
@@ -194,7 +189,8 @@ class HueWindow(Adw.ApplicationWindow):
         # renders too small to read at larger interface font sizes.
         self._canvas_size_label = Gtk.Label()
         self._canvas_size_label.add_css_class("numeric")
-        button = Gtk.Button(tooltip_text="Canvas size (Ctrl+E)")
+        button = Gtk.Button()
+        self._add_shortcut_tooltip(button, "Canvas size", "win.resize")
         button.set_child(self._canvas_size_label)
         button.add_css_class("flat")
         button.set_valign(Gtk.Align.CENTER)
@@ -242,11 +238,8 @@ class HueWindow(Adw.ApplicationWindow):
 
         tools = Gtk.Grid(row_spacing=6, column_spacing=6, halign=Gtk.Align.CENTER)
         for index, tool in enumerate(TOOL_CLASSES):
-            accel = TOOL_ACCELS[tool.id].upper()
-            button = Gtk.ToggleButton(
-                icon_name=tool.icon_name,
-                tooltip_text=f"{tool.label} ({accel})",
-            )
+            button = Gtk.ToggleButton(icon_name=tool.icon_name)
+            self._add_shortcut_tooltip(button, tool.label, f"win.tool::{tool.id}")
             button.add_css_class("hue-tool")
             button.set_action_name("win.tool")
             button.set_action_target_value(GLib.Variant.new_string(tool.id))
@@ -303,6 +296,7 @@ class HueWindow(Adw.ApplicationWindow):
             "copy": lambda *_: self._copy(),
             "paste": lambda *_: self._paste(),
             "swap-colors": lambda *_: self.colors.swap(),
+            "shortcuts": lambda *_: ShortcutsDialog(self.get_application()).present(self),
             "resize": lambda *_: self._prompt_canvas_size(),
             "zoom-in": lambda *_: self.canvas.zoom_in(),
             "zoom-out": lambda *_: self.canvas.zoom_out(),
@@ -339,36 +333,7 @@ class HueWindow(Adw.ApplicationWindow):
         open_recent_action.connect("activate", self._unless_dragging(self._action_open_recent))
         self.add_action(open_recent_action)
 
-        app = self.get_application()
-        accels = {
-            "win.new": ["<Control>n"],
-            "win.open": ["<Control>o"],
-            "win.save": ["<Control>s"],
-            "win.save-as": ["<Control><Shift>s"],
-            "win.select-all": ["<Control>a"],
-            "win.cut": ["<Control>x"],
-            "win.copy": ["<Control>c"],
-            "win.paste": ["<Control>v"],
-            "win.undo": ["<Control>z"],
-            "win.redo": ["<Control><Shift>z", "<Control>y"],
-            "win.swap-colors": ["x"],
-            "win.resize": ["<Control>e"],
-            "win.zoom-in": ["<Control>plus", "<Control>equal", "<Control>KP_Add"],
-            "win.zoom-out": ["<Control>minus", "<Control>KP_Subtract"],
-            "win.zoom-reset": ["<Control>0", "<Control>KP_0"],
-            "app.quit": ["<Control>q"],
-        }
-        for tool_id, key in TOOL_ACCELS.items():
-            accels[f"win.tool::{tool_id}"] = [key]
-        for action_name, keys in accels.items():
-            app.set_accels_for_action(action_name, keys)
-
-        # Typing into a text box must not trip the shortcuts that are a bare key.
-        self._single_key_accels = {
-            name: keys
-            for name, keys in accels.items()
-            if all("<" not in key for key in keys)
-        }
+        shortcuts.apply_accels(self.get_application())
 
         clipboard = self.get_clipboard()
         clipboard.connect("changed", lambda *_: self._sync_paste_action())
@@ -495,9 +460,16 @@ class HueWindow(Adw.ApplicationWindow):
         if self.canvas.is_typing == self._typing:
             return
         self._typing = self.canvas.is_typing
-        app = self.get_application()
-        for name, keys in self._single_key_accels.items():
-            app.set_accels_for_action(name, [] if self._typing else keys)
+        shortcuts.apply_accels(self.get_application())
+
+    def _add_shortcut_tooltip(self, widget: Gtk.Widget, text: str, action: str) -> None:
+        self._shortcut_tooltips.append((widget, text, action))
+        widget.set_tooltip_text(shortcuts.tooltip(text, action))
+
+    def refresh_shortcut_tooltips(self) -> None:
+        """Show the current keys after the user changes a shortcut."""
+        for widget, text, action in self._shortcut_tooltips:
+            widget.set_tooltip_text(shortcuts.tooltip(text, action))
 
     def _on_resize_preview(self, canvas, width: int, height: int) -> None:
         """Count out the pending size while a resize grip is being dragged."""

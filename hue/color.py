@@ -122,10 +122,11 @@ class ColorBar(Gtk.Box):
         current.append(self._secondary_swatch)
         self.append(current)
 
-        self._swap = Gtk.Button(icon_name="hue-swap-symbolic", tooltip_text="Swap colors (X)")
-        self._swap.add_css_class("flat")
-        self._swap.connect("clicked", lambda *_: colors.swap())
-        self.append(self._swap)
+        # The window gives it a tooltip naming the current shortcut.
+        self.swap_button = Gtk.Button(icon_name="hue-swap-symbolic")
+        self.swap_button.add_css_class("flat")
+        self.swap_button.connect("clicked", lambda *_: colors.swap())
+        self.append(self.swap_button)
 
         self._grid = Gtk.Grid(row_spacing=4, column_spacing=4)
         self._palette_swatches = []
@@ -149,8 +150,8 @@ class ColorBar(Gtk.Box):
         self.set_margin_top(margin_y)
         self.set_margin_bottom(margin_y)
 
-        self._swap.set_halign(Gtk.Align.CENTER if vertical else Gtk.Align.FILL)
-        self._swap.set_valign(Gtk.Align.FILL if vertical else Gtk.Align.CENTER)
+        self.swap_button.set_halign(Gtk.Align.CENTER if vertical else Gtk.Align.FILL)
+        self.swap_button.set_valign(Gtk.Align.FILL if vertical else Gtk.Align.CENTER)
         self._grid.set_halign(Gtk.Align.CENTER if vertical else Gtk.Align.FILL)
         self._grid.set_valign(Gtk.Align.START if vertical else Gtk.Align.CENTER)
 

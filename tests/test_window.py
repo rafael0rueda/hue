@@ -110,3 +110,53 @@ def test_palette_position_is_remembered(application, window):
         assert reopened._color_bar.get_parent() is slot
     finally:
         reopened.destroy()
+
+
+def test_tooltips_follow_changed_shortcuts(application, window):
+    from hue import shortcuts
+
+    swap = window._color_bar.swap_button
+    assert swap.get_tooltip_text() == "Swap colors (X)"
+
+    shortcuts.assign(application, "win.swap-colors", "<Shift>x")
+    assert swap.get_tooltip_text() == "Swap colors (Shift+X)"
+
+    shortcuts.assign(application, "win.swap-colors", None)
+    assert swap.get_tooltip_text() == "Swap colors"
+
+    shortcuts.reset(application)
+    assert swap.get_tooltip_text() == "Swap colors (X)"
+
+
+def test_bare_keys_pause_while_typing_including_new_ones(application, window):
+    from hue import shortcuts
+
+    shortcuts.assign(application, "win.crop", "c")
+    window.canvas.begin_text(10, 10, window.colors.primary)
+    try:
+        assert application.get_accels_for_action("win.tool::pencil") == []
+        assert application.get_accels_for_action("win.crop") == []
+        assert application.get_accels_for_action("win.new") == ["<Control>n"]
+    finally:
+        window.canvas.cancel_text()
+    assert application.get_accels_for_action("win.tool::pencil") == ["p"]
+    assert application.get_accels_for_action("win.crop") == ["c"]
+    shortcuts.reset(application)
+
+
+def test_shortcuts_dialog_lists_every_shortcut(application, window):
+    from hue import shortcuts
+    from hue.shortcuts_dialog import ShortcutsDialog
+
+    shortcuts.assign(application, "win.crop", "<Control>k")
+    dialog = ShortcutsDialog(application)
+    assert set(dialog._rows) == set(shortcuts.SHORTCUTS)
+    keys, reset = dialog._rows["win.crop"]
+    assert keys.get_accelerator() == "<Control>k"
+    assert reset.get_visible()
+    assert not dialog._rows["win.new"][1].get_visible()
+    assert dialog._reset_all_row.get_sensitive()
+
+    dialog._reset(shortcuts.SHORTCUTS["win.crop"])
+    assert keys.get_accelerator() == ""
+    assert not dialog._reset_all_row.get_sensitive()

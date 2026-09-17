@@ -13,6 +13,8 @@ python.install_sources(
     'main.py',
     'recent_files.py',
     'settings.py',
+    'shortcuts.py',
+    'shortcuts_dialog.py',
     'text.py',
     'window.py',
   ),

@@ -96,7 +96,18 @@ colour, right click the secondary. `X` swaps them.
 | Land / discard typed text   | `Ctrl+Enter` / `Esc`                             |
 | Undo / Redo                 | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`)          |
 | Zoom in / out / 100%        | `Ctrl++` / `Ctrl+-` / `Ctrl+0`, or `Ctrl`+scroll |
+| Keyboard shortcuts          | `Ctrl+?`                                         |
 | Quit                        | `Ctrl+Q`                                         |
+
+### Customising shortcuts
+
+The keys above are the defaults. **Keyboard Shortcuts** in the main menu (or `Ctrl+?`)
+lists every shortcut: click one and press the new key, `Backspace` to remove it, or `Esc`
+to leave it as it was. A key another action already uses can be moved over after a
+confirmation. Crop, rotate and flip have no key by default but can be given one. Keys the
+canvas needs — arrows, `Enter`, `Esc`, `Delete`, `Tab` — are listed but cannot be
+reassigned. Changes are saved in `~/.config/hue/settings.ini`; only keys that differ
+from the defaults are stored, and **Reset All Shortcuts** puts everything back.
 
 ## Opening and saving
 
