@@ -12,6 +12,7 @@ python.install_sources(
     'file_io.py',
     'main.py',
     'recent_files.py',
+    'settings.py',
     'text.py',
     'window.py',
   ),

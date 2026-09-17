@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import pytest
-from gi.repository import Adw, Gio, GLib
+from gi.repository import Adw, Gio, GLib, Gtk
 
-from hue import recent_files
+from hue import recent_files, settings
 from hue.window import HueWindow
 
 from pixels import paint_pixel, pixel_at
@@ -26,6 +26,7 @@ def application():
 @pytest.fixture
 def window(application, monkeypatch, tmp_path):
     monkeypatch.setattr(recent_files, "_recent_file_path", lambda: tmp_path / "recent-files.txt")
+    monkeypatch.setattr(settings, "_settings_path", lambda: tmp_path / "settings.ini")
     window = HueWindow(application)
     yield window
     window.destroy()
@@ -60,3 +61,52 @@ def test_zooming_still_works_while_a_stroke_is_under_way(window):
     window.canvas._drag_origin = (0.0, 0.0)
     window.activate_action("win.zoom-in", None)
     assert window.canvas.zoom > 1.0
+
+
+def palette_position(window):
+    return window.lookup_action("palette-position").get_state().get_string()
+
+
+def test_palette_starts_at_the_bottom(window):
+    assert palette_position(window) == "bottom"
+    slot, _strip = window._palette_slots["bottom"]
+    assert window._color_bar.get_parent() is slot
+    assert window._color_bar.get_orientation() == Gtk.Orientation.HORIZONTAL
+
+
+@pytest.mark.parametrize("position", ["left", "right"])
+def test_palette_moves_to_a_side_strip(window, position):
+    window.activate_action("win.palette-position", GLib.Variant.new_string(position))
+
+    slot, strip = window._palette_slots[position]
+    assert window._color_bar.get_parent() is slot
+    assert window._color_bar.get_orientation() == Gtk.Orientation.VERTICAL
+    visible = {name for name, (_slot, s) in window._palette_slots.items() if s and s.get_visible()}
+    assert visible == {position}
+
+
+def test_palette_returns_to_the_bottom(window):
+    window.activate_action("win.palette-position", GLib.Variant.new_string("left"))
+    window.activate_action("win.palette-position", GLib.Variant.new_string("bottom"))
+
+    slot, _strip = window._palette_slots["bottom"]
+    assert window._color_bar.get_parent() is slot
+    assert window._color_bar.get_orientation() == Gtk.Orientation.HORIZONTAL
+    assert not any(s.get_visible() for _slot, s in window._palette_slots.values() if s)
+
+
+def test_unknown_palette_position_is_ignored(window):
+    window.activate_action("win.palette-position", GLib.Variant.new_string("top"))
+    assert palette_position(window) == "bottom"
+
+
+def test_palette_position_is_remembered(application, window):
+    window.activate_action("win.palette-position", GLib.Variant.new_string("right"))
+
+    reopened = HueWindow(application)
+    try:
+        assert palette_position(reopened) == "right"
+        slot, _strip = reopened._palette_slots["right"]
+        assert reopened._color_bar.get_parent() is slot
+    finally:
+        reopened.destroy()

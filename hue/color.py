@@ -108,10 +108,6 @@ class ColorBar(Gtk.Box):
     def __init__(self, colors: ColorState):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         self.colors = colors
-        self.set_margin_top(6)
-        self.set_margin_bottom(6)
-        self.set_margin_start(12)
-        self.set_margin_end(12)
 
         self._primary_swatch = Swatch(colors.primary, size=32)
         self._secondary_swatch = Swatch(colors.secondary, size=32)
@@ -121,25 +117,49 @@ class ColorBar(Gtk.Box):
         self._secondary_swatch.connect("picked", lambda *_: self._choose(primary=False))
 
         current = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        current.set_halign(Gtk.Align.CENTER)
         current.append(self._primary_swatch)
         current.append(self._secondary_swatch)
         self.append(current)
 
-        swap = Gtk.Button(icon_name="hue-swap-symbolic", tooltip_text="Swap colors (X)")
-        swap.add_css_class("flat")
-        swap.set_valign(Gtk.Align.CENTER)
-        swap.connect("clicked", lambda *_: colors.swap())
-        self.append(swap)
+        self._swap = Gtk.Button(icon_name="hue-swap-symbolic", tooltip_text="Swap colors (X)")
+        self._swap.add_css_class("flat")
+        self._swap.connect("clicked", lambda *_: colors.swap())
+        self.append(self._swap)
 
-        grid = Gtk.Grid(row_spacing=4, column_spacing=4, valign=Gtk.Align.CENTER)
-        for index, spec in enumerate(PALETTE):
+        self._grid = Gtk.Grid(row_spacing=4, column_spacing=4)
+        self._palette_swatches = []
+        for spec in PALETTE:
             swatch = Swatch(rgba(spec))
             swatch.set_tooltip_text(spec)
             swatch.connect("picked", self._on_palette_picked)
-            grid.attach(swatch, index % 10, index // 10, 1, 1)
-        self.append(grid)
+            self._palette_swatches.append(swatch)
+        self.append(self._grid)
 
+        self.set_vertical(False)
         colors.connect("changed", self._sync)
+
+    def set_vertical(self, vertical: bool) -> None:
+        """Lay out as a wide strip for the bottom bar, or a tall one for a side of the canvas."""
+        self.set_orientation(Gtk.Orientation.VERTICAL if vertical else Gtk.Orientation.HORIZONTAL)
+        # A side strip brings its own padding, so only the bottom bar needs margins.
+        margin_x, margin_y = (0, 0) if vertical else (12, 6)
+        self.set_margin_start(margin_x)
+        self.set_margin_end(margin_x)
+        self.set_margin_top(margin_y)
+        self.set_margin_bottom(margin_y)
+
+        self._swap.set_halign(Gtk.Align.CENTER if vertical else Gtk.Align.FILL)
+        self._swap.set_valign(Gtk.Align.FILL if vertical else Gtk.Align.CENTER)
+        self._grid.set_halign(Gtk.Align.CENTER if vertical else Gtk.Align.FILL)
+        self._grid.set_valign(Gtk.Align.START if vertical else Gtk.Align.CENTER)
+
+        columns = 2 if vertical else 10
+        for swatch in self._palette_swatches:
+            if swatch.get_parent() is not None:
+                self._grid.remove(swatch)
+        for index, swatch in enumerate(self._palette_swatches):
+            self._grid.attach(swatch, index % columns, index // columns, 1, 1)
 
     def _on_palette_picked(self, swatch: Swatch, button: int) -> None:
         if button == Gdk.BUTTON_SECONDARY:

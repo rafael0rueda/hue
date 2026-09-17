@@ -127,6 +127,13 @@ menu. Every tool keeps working at any zoom, and from 100% up each image pixel sh
 a crisp square, which makes pixel-level touch-ups with the pencil easy. The bottom bar
 also shows which image pixel the pointer is over.
 
+## Moving the palette
+
+The colour palette sits in the bottom bar by default. **Palette Position** in the main
+menu moves it to a column on the left or right of the canvas instead, which leaves more
+height for the image on wide screens. The choice is remembered in
+`~/.config/hue/settings.ini`.
+
 ## Resizing the canvas
 
 Drag one of the three grips on the right, bottom and bottom-right edge of the image to

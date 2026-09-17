@@ -18,6 +18,7 @@ from .file_io import (
     with_default_extension,
 )
 from .recent_files import forget_recent, load_recent, remember_recent
+from .settings import PALETTE_POSITIONS, load_palette_position, save_palette_position
 from .text import FONT_SIZE_RANGE, font_size, font_without_size, with_font_size
 from .tools import TOOL_CLASSES
 
@@ -80,11 +81,15 @@ class HueWindow(Adw.ApplicationWindow):
         self._title = Adw.WindowTitle(title=APP_NAME)
         self.toasts = Adw.ToastOverlay()
         self._recent_menu = Gio.Menu()
+        self._color_bar = ColorBar(self.colors)
+        # Where the palette can go: position -> (slot it sits in, strip to show).
+        self._palette_slots: dict[str, tuple[Gtk.Box, Gtk.Box | None]] = {}
 
         toolbars = Adw.ToolbarView()
         toolbars.add_top_bar(self._build_header())
         toolbars.add_bottom_bar(self._build_bottom_bar())
         toolbars.set_content(self._build_content())
+        self._place_palette(load_palette_position())
 
         self.toasts.set_child(toolbars)
         self.set_content(self.toasts)
@@ -137,6 +142,11 @@ class HueWindow(Adw.ApplicationWindow):
         view_section.append("Zoom In", "win.zoom-in")
         view_section.append("Zoom Out", "win.zoom-out")
         view_section.append("Reset Zoom", "win.zoom-reset")
+        palette_menu = Gio.Menu()
+        palette_menu.append("Bottom", "win.palette-position::bottom")
+        palette_menu.append("Left", "win.palette-position::left")
+        palette_menu.append("Right", "win.palette-position::right")
+        view_section.append_submenu("Palette Position", palette_menu)
         menu.append_section(None, view_section)
         file_section = Gio.Menu()
         file_section.append_submenu("Recent Files", self._recent_menu)
@@ -157,12 +167,15 @@ class HueWindow(Adw.ApplicationWindow):
 
     def _build_bottom_bar(self) -> Gtk.Widget:
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        # The height the palette gives it, kept when the palette is elsewhere.
+        bar.set_size_request(-1, 60)
 
-        colors = ColorBar(self.colors)
-        colors.set_hexpand(True)
-        bar.append(colors)
+        # Holds the palette when it sits at the bottom; empty otherwise.
+        bottom_slot = Gtk.Box()
+        bar.append(bottom_slot)
 
-        self._cursor_label = Gtk.Label()
+        # Expands so the status items stay on the right wherever the palette is.
+        self._cursor_label = Gtk.Label(hexpand=True, xalign=1)
         self._cursor_label.add_css_class("numeric")
         self._cursor_label.add_css_class("dim-label")
         bar.append(self._cursor_label)
@@ -188,6 +201,8 @@ class HueWindow(Adw.ApplicationWindow):
         button.set_margin_end(12)
         button.set_action_name("win.resize")
         bar.append(button)
+
+        self._palette_slots["bottom"] = (bottom_slot, None)
         return bar
 
     def _build_content(self) -> Gtk.Widget:
@@ -195,11 +210,30 @@ class HueWindow(Adw.ApplicationWindow):
         content.append(self._build_sidebar())
         content.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
 
+        left_slot, left_strip = self._build_palette_strip(separator_first=False)
+        content.append(left_strip)
+
         scrolled = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
         scrolled.add_css_class("hue-canvas-area")
         scrolled.set_child(self.canvas)
         content.append(scrolled)
+
+        right_slot, right_strip = self._build_palette_strip(separator_first=True)
+        content.append(right_strip)
+
+        self._palette_slots["left"] = (left_slot, left_strip)
+        self._palette_slots["right"] = (right_slot, right_strip)
         return content
+
+    def _build_palette_strip(self, separator_first: bool) -> tuple[Gtk.Box, Gtk.Box]:
+        """A column beside the canvas for the palette, hidden while it is elsewhere."""
+        slot = Gtk.Box()
+        slot.add_css_class("hue-sidebar")
+        separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        strip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, visible=False)
+        for child in (separator, slot) if separator_first else (slot, separator):
+            strip.append(child)
+        return slot, strip
 
     def _build_sidebar(self) -> Gtk.Widget:
         sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -293,6 +327,14 @@ class HueWindow(Adw.ApplicationWindow):
         tool_action.connect("change-state", self._unless_dragging(self._on_tool_changed))
         self.add_action(tool_action)
 
+        palette_action = Gio.SimpleAction.new_stateful(
+            "palette-position",
+            GLib.VariantType.new("s"),
+            GLib.Variant.new_string(self._palette_position),
+        )
+        palette_action.connect("change-state", self._on_palette_position_changed)
+        self.add_action(palette_action)
+
         open_recent_action = Gio.SimpleAction.new("open-recent", GLib.VariantType.new("s"))
         open_recent_action.connect("activate", self._unless_dragging(self._action_open_recent))
         self.add_action(open_recent_action)
@@ -349,6 +391,26 @@ class HueWindow(Adw.ApplicationWindow):
         self._fill_check.set_sensitive(self.canvas.supports_fill)
         self._font_button.set_sensitive(self.canvas.supports_font)
         self._sync_size_scale()
+
+    def _on_palette_position_changed(self, action, value: GLib.Variant) -> None:
+        position = value.get_string()
+        if position not in PALETTE_POSITIONS:
+            return
+        action.set_state(value)
+        self._place_palette(position)
+        save_palette_position(position)
+
+    def _place_palette(self, position: str) -> None:
+        parent = self._color_bar.get_parent()
+        if parent is not None:
+            parent.remove(self._color_bar)
+        for name, (slot, strip) in self._palette_slots.items():
+            if strip is not None:
+                strip.set_visible(name == position)
+        slot, _strip = self._palette_slots[position]
+        slot.append(self._color_bar)
+        self._color_bar.set_vertical(position != "bottom")
+        self._palette_position = position
 
     def _on_size_changed(self, scale: Gtk.Scale) -> None:
         if self._syncing_size:
