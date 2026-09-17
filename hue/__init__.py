@@ -3,4 +3,4 @@
 
 APP_ID = "io.github.rafael0rueda.Hue"
 APP_NAME = "Hue"
-VERSION = "0.2.0"
+VERSION = "0.3.0"

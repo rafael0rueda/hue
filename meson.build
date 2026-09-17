@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 project('hue',
-  version: '0.2.0',
+  version: '0.3.0',
   meson_version: '>= 0.62.0',
 )
 

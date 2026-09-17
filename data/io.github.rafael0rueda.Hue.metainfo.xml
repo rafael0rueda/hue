@@ -24,6 +24,8 @@
       <li>Zoom from 10% to 800%, with crisp pixels when zoomed in</li>
       <li>Rotate and flip the whole image, and resize the canvas by dragging its edge</li>
       <li>Undo and redo history, and a list of recently opened files</li>
+      <li>Keyboard shortcuts you can change to suit you</li>
+      <li>A colour palette along the bottom, under the tools or beside the canvas</li>
     </ul>
     <p>
       Hue works entirely offline: it never connects to the network and keeps every
@@ -54,7 +56,7 @@
   <screenshots>
     <screenshot type="default">
       <caption>The main window with a blank canvas</caption>
-      <image type="source" width="1116" height="797">https://raw.githubusercontent.com/rafael0rueda/hue/v0.2.0/data/screenshots/main-window.png</image>
+      <image type="source" width="1120" height="800">https://raw.githubusercontent.com/rafael0rueda/hue/v0.3.0/data/screenshots/main-window.png</image>
     </screenshot>
   </screenshots>
   <categories>
@@ -62,6 +64,22 @@
     <category>RasterGraphics</category>
   </categories>
   <releases>
+    <release version="0.3.0" date="2026-09-17">
+      <description>
+        <p>New features:</p>
+        <ul>
+          <li>Change any keyboard shortcut from the new Keyboard Shortcuts window (Ctrl+?)</li>
+          <li>Place the colour palette along the bottom, under the tools or right of the canvas</li>
+          <li>The image is centred when the window has room around it, such as when maximised</li>
+          <li>Scroll over the zoom level in the bottom bar to zoom in or out</li>
+        </ul>
+        <p>Fixes and improvements:</p>
+        <ul>
+          <li>A refreshed look, with the canvas set in a rounded card inside one continuous frame</li>
+          <li>The window closes on the first click when there are no unsaved changes</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-09-16">
       <description>
         <p>New features:</p>
