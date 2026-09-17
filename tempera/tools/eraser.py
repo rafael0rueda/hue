@@ -3,12 +3,13 @@
 
 import cairo
 
+from ..i18n import _
 from .base import FreehandTool, ToolContext
 
 
 class EraserTool(FreehandTool):
     id = "eraser"
-    label = "Eraser"
+    label = _("Eraser")
     icon_name = "tempera-eraser-symbolic"
     antialias = False
     line_cap = cairo.LINE_CAP_SQUARE

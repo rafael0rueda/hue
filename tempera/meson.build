@@ -10,6 +10,7 @@ python.install_sources(
     'color.py',
     'document.py',
     'file_io.py',
+    'i18n.py',
     'main.py',
     'recent_files.py',
     'settings.py',
@@ -43,6 +44,7 @@ launcher = configuration_data()
 launcher.set('PYTHON', python.full_path())
 launcher.set('PYTHON_DIR', python.get_install_dir())
 launcher.set('PKGDATADIR', pkgdatadir)
+launcher.set('LOCALEDIR', localedir)
 
 configure_file(
   input: 'tempera.in',

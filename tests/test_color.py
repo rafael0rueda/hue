@@ -15,7 +15,7 @@ def test_defaults_are_black_on_white():
 def test_setting_primary_emits_changed():
     colors = ColorState()
     seen = []
-    colors.connect("changed", lambda *_: seen.append(True))
+    colors.connect("changed", lambda *_args: seen.append(True))
     colors.primary = rgba("#ff0000")
     assert seen == [True]
     assert colors.primary.red == 1

@@ -11,6 +11,7 @@ import cairo
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
 
 from .document import MAX_SIZE, Document, new_surface, surface_from_pixbuf
+from .i18n import _
 
 EXTENSION_FORMATS = {
     ".png": "png",
@@ -46,16 +47,16 @@ MAX_FILE_BYTES = 512 * 1024 * 1024
 def image_filters() -> Gio.ListStore:
     store = Gio.ListStore.new(Gtk.FileFilter)
 
-    images = Gtk.FileFilter(name="Images")
+    images = Gtk.FileFilter(name=_("Images"))
     for mime in OPEN_MIME_TYPES:
         images.add_mime_type(mime)
     store.append(images)
 
-    png = Gtk.FileFilter(name="PNG image")
+    png = Gtk.FileFilter(name=_("PNG image"))
     png.add_mime_type("image/png")
     store.append(png)
 
-    every = Gtk.FileFilter(name="All files")
+    every = Gtk.FileFilter(name=_("All files"))
     every.add_pattern("*")
     store.append(every)
     return store
@@ -74,7 +75,11 @@ def check_image_size(width: int, height: int) -> None:
     """Refuse an image bigger than a canvas can be, before its pixels are copied."""
     if not fits(width, height):
         # Short enough for a toast at the window's default width.
-        raise image_error(f"Too large at {width} × {height} px (the limit is {MAX_SIZE})")
+        raise image_error(
+            _("Too large at {width} × {height} px (the limit is {limit})").format(
+                width=width, height=height, limit=MAX_SIZE
+            )
+        )
 
 
 def check_readable(file: Gio.File) -> None:
@@ -85,17 +90,25 @@ def check_readable(file: Gio.File) -> None:
     """
     if file.get_path() is None:
         # Tempera stays offline, so a web or network address is never fetched.
-        raise image_error(f"“{file.get_basename()}” is not a file on this computer")
+        raise image_error(
+            _("“{name}” is not a file on this computer").format(name=file.get_basename())
+        )
 
     info = file.query_info(
         "standard::type,standard::size", Gio.FileQueryInfoFlags.NONE, None
     )
     if info.get_file_type() != Gio.FileType.REGULAR:
-        raise image_error(f"“{file.get_basename()}” is not an ordinary file")
+        raise image_error(
+            _("“{name}” is not an ordinary file").format(name=file.get_basename())
+        )
     size = info.get_size()
     if size > MAX_FILE_BYTES:
         limit = MAX_FILE_BYTES // (1024 * 1024)
-        raise image_error(f"Too big at {size // (1024 * 1024)} MB (the limit is {limit} MB)")
+        raise image_error(
+            _("Too big at {size} MB (the limit is {limit} MB)").format(
+                size=size // (1024 * 1024), limit=limit
+            )
+        )
 
 
 def load_surface(file: Gio.File) -> cairo.ImageSurface:
@@ -188,10 +201,16 @@ def image_to_save(document: Document, file: Gio.File) -> tuple[GdkPixbuf.Pixbuf,
     """
     image_format = format_for(file)
     if image_format is None:
-        extension = os.path.splitext(file.get_basename())[1] or "without an extension"
-        raise image_error(f"Cannot save images as {extension}")
+        extension = os.path.splitext(file.get_basename())[1]
+        raise image_error(
+            _("Cannot save images as {extension}").format(extension=extension)
+            if extension
+            else _("Cannot save an image without a file extension")
+        )
     if image_format == "ico" and max(document.width, document.height) > ICO_MAX_SIZE:
-        raise image_error(f"ICO images can be at most {ICO_MAX_SIZE} × {ICO_MAX_SIZE} px")
+        raise image_error(
+            _("ICO images can be at most {size} × {size} px").format(size=ICO_MAX_SIZE)
+        )
 
     if image_format in FLATTEN_FORMATS:
         # These formats have no alpha channel, so composite onto white first.

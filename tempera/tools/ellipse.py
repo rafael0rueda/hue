@@ -3,12 +3,13 @@
 
 import math
 
+from ..i18n import _
 from .base import ShapeTool
 
 
 class EllipseTool(ShapeTool):
     id = "ellipse"
-    label = "Ellipse"
+    label = _("Ellipse")
     icon_name = "tempera-ellipse-symbolic"
 
     def render(self, cr, ctx, start, end):

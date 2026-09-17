@@ -13,6 +13,7 @@ from .clipboard import surface_from_texture
 from .color import ColorState
 from .document import MAX_SIZE, Document, crop_surface
 from .file_io import load_surface_async
+from .i18n import _
 from .text import DEFAULT_FONT, TextBox
 from .tools import (
     SELECT_TOOL_ID,
@@ -44,7 +45,9 @@ CARET_BLINK_MS = 530
 # How far the pointer has to travel before a click inside a text box counts
 # as dragging it somewhere else rather than placing the caret.
 MOVE_THRESHOLD = 4
-CUT_OFF_MESSAGE = f"Part of the image was cut off, as a canvas can be at most {MAX_SIZE} × {MAX_SIZE} px"
+CUT_OFF_MESSAGE = _("Part of the image was cut off: a canvas can be at most {size} × {size} px").format(
+    size=MAX_SIZE
+)
 # Arrow-key nudge for a selection or floating paste, in image pixels; Shift steps further.
 NUDGE_STEP = 1
 NUDGE_STEP_FAST = 10
@@ -186,7 +189,9 @@ class Canvas(Gtk.DrawingArea):
     }
 
     def __init__(self, document: Document, colors: ColorState):
-        super().__init__()
+        # An image to assistive technology: it holds a picture, and its label
+        # says how big that picture is.
+        super().__init__(accessible_role=Gtk.AccessibleRole.IMG)
         self.colors = colors
         self.tools = create_tools()
         self.active_tool: Tool = self.tools["pencil"]
@@ -226,7 +231,7 @@ class Canvas(Gtk.DrawingArea):
         drag.connect("drag-update", self._on_drag_update)
         drag.connect("drag-end", self._on_drag_end)
         # Lets CanvasFrame re-centre an image that a drag resized.
-        drag.connect_after("drag-end", lambda *_: self.queue_resize())
+        drag.connect_after("drag-end", lambda *_args: self.queue_resize())
         self.add_controller(drag)
 
         motion = Gtk.EventControllerMotion()
@@ -277,7 +282,7 @@ class Canvas(Gtk.DrawingArea):
         self._sync_content_size()
         self.queue_draw()
 
-    def _on_content_changed(self, *_) -> None:
+    def _on_content_changed(self, *_args) -> None:
         # Undo/redo and resizing can swap in a differently sized surface.
         if self._selection is not None:
             document = self._document
@@ -302,6 +307,14 @@ class Canvas(Gtk.DrawingArea):
         margin = round(HANDLE_MARGIN * self.zoom)
         self.set_content_width(round(width * self.zoom) + margin)
         self.set_content_height(round(height * self.zoom) + margin)
+        self.update_property(
+            [Gtk.AccessibleProperty.LABEL],
+            [
+                _("Drawing canvas, {width} × {height} pixels").format(
+                    width=self._document.width, height=self._document.height
+                )
+            ],
+        )
 
     @property
     def is_dragging(self) -> bool:
@@ -852,7 +865,7 @@ class Canvas(Gtk.DrawingArea):
             return
         self._set_cursor(None)
 
-    def _on_leave(self, *_) -> None:
+    def _on_leave(self, *_args) -> None:
         self._set_cursor(None)
         self.emit("pointer-left")
 
@@ -1051,7 +1064,7 @@ class Canvas(Gtk.DrawingArea):
 
     # Drawing
 
-    def _draw(self, area, cr: cairo.Context, width: int, height: int, *_):
+    def _draw(self, area, cr: cairo.Context, width: int, height: int, *_args):
         image_width, image_height = self._document.width, self._document.height
 
         # Everything below is laid out in image pixels; this one transform is
@@ -1239,7 +1252,7 @@ class CanvasFrame(Gtk.Widget):
         self.canvas = canvas
         canvas.set_parent(self)
         self.offset = (0, 0)
-        canvas.connect("floating-changed", lambda *_: self.queue_resize())
+        canvas.connect("floating-changed", lambda *_args: self.queue_resize())
 
     def _held(self) -> bool:
         return self.canvas.is_dragging or self.canvas.has_floating

@@ -3,8 +3,25 @@
 
 app_id = 'io.github.rafael0rueda.Tempera'
 
-install_data(app_id + '.desktop', install_dir: datadir / 'applications')
-install_data(app_id + '.metainfo.xml', install_dir: datadir / 'metainfo')
+# Translated at build time: msgfmt fills in whatever po/ holds for the
+# handful of keys and elements people actually read.
+i18n.merge_file(
+  input: app_id + '.desktop.in',
+  output: app_id + '.desktop',
+  type: 'desktop',
+  po_dir: meson.project_source_root() / 'po',
+  install: true,
+  install_dir: datadir / 'applications',
+)
+
+i18n.merge_file(
+  input: app_id + '.metainfo.xml.in',
+  output: app_id + '.metainfo.xml',
+  type: 'xml',
+  po_dir: meson.project_source_root() / 'po',
+  install: true,
+  install_dir: datadir / 'metainfo',
+)
 install_data(
   'icons' / 'hicolor' / 'scalable' / 'apps' / app_id + '.svg',
   install_dir: datadir / 'icons' / 'hicolor' / 'scalable' / 'apps',

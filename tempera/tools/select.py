@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from ..i18n import _
 from .base import ShapeTool, Tool, draw_marquee
 
 
@@ -10,7 +11,7 @@ class SelectTool(Tool):
     """Rubber-bands a rectangle and hands it to the canvas as the selection."""
 
     id = "select"
-    label = "Select"
+    label = _("Select")
     icon_name = "tempera-select-symbolic"
     # Picking a region changes nothing in the image; moving or deleting it later does.
     mutates = False

@@ -5,12 +5,13 @@ import math
 
 import cairo
 
+from ..i18n import _
 from .base import ShapeTool, set_source
 
 
 class LineTool(ShapeTool):
     id = "line"
-    label = "Line"
+    label = _("Line")
     icon_name = "tempera-line-symbolic"
 
     def render(self, cr, ctx, start, end):

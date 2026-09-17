@@ -4,12 +4,17 @@
 from __future__ import annotations
 
 from gi.repository import Gdk, GObject, Gtk
+from .i18n import _
 
+# Named, because a swatch a screen reader can only call "#c01c28" is no use.
 PALETTE = [
-    "#000000", "#7a7a7a", "#c01c28", "#e66100", "#f5c211", "#33d17a",
-    "#2ec27e", "#3584e4", "#1c71d8", "#9141ac", "#986a44", "#63452c",
-    "#ffffff", "#deddda", "#f66151", "#ffbe6f", "#f9f06b", "#8ff0a4",
-    "#99c1f1", "#dc8add",
+    (_("Black"), "#000000"), (_("Grey"), "#7a7a7a"), (_("Red"), "#c01c28"),
+    (_("Orange"), "#e66100"), (_("Yellow"), "#f5c211"), (_("Green"), "#33d17a"),
+    (_("Teal"), "#2ec27e"), (_("Blue"), "#3584e4"), (_("Dark blue"), "#1c71d8"),
+    (_("Purple"), "#9141ac"), (_("Brown"), "#986a44"), (_("Dark brown"), "#63452c"),
+    (_("White"), "#ffffff"), (_("Light grey"), "#deddda"), (_("Light red"), "#f66151"),
+    (_("Light orange"), "#ffbe6f"), (_("Light yellow"), "#f9f06b"),
+    (_("Light green"), "#8ff0a4"), (_("Light blue"), "#99c1f1"), (_("Pink"), "#dc8add"),
 ]
 
 
@@ -55,22 +60,45 @@ class ColorState(GObject.Object):
         self.emit("changed")
 
 
-class Swatch(Gtk.DrawingArea):
-    """A clickable color square. Left click sets primary, right click secondary."""
+def describe(color: Gdk.RGBA) -> str:
+    """A color as a person would hear it: its palette name if it has one, else its hex."""
+    spec = "#%02x%02x%02x" % tuple(round(channel * 255) for channel in (color.red, color.green, color.blue))
+    for name, palette_spec in PALETTE:
+        if palette_spec == spec:
+            return _("{name} ({hex})").format(name=name, hex=spec)
+    return spec
+
+
+class Swatch(Gtk.Button):
+    """A clickable color square. Left click sets primary, right click secondary.
+
+    A button rather than a plain drawing area, so it can be reached with Tab,
+    activated with Enter or Space, and announced by a screen reader. Keyboard
+    activation sets the primary color; `X` then swaps the two.
+    """
 
     __gsignals__ = {"picked": (GObject.SignalFlags.RUN_FIRST, None, (int,))}
 
-    def __init__(self, color: Gdk.RGBA, size: int = 22):
+    def __init__(self, color: Gdk.RGBA, size: int = 22, label: str = ""):
         super().__init__()
         self._color = color
-        self.set_content_width(size)
-        self.set_content_height(size)
-        self.set_draw_func(self._draw)
         self.add_css_class("tempera-swatch")
+        area = Gtk.DrawingArea(content_width=size, content_height=size)
+        area.set_draw_func(self._draw)
+        self.set_child(area)
+        self._area = area
 
-        click = Gtk.GestureClick(button=0)
-        click.connect("pressed", self._on_pressed)
-        self.add_controller(click)
+        self.connect("clicked", lambda *_args: self.emit("picked", Gdk.BUTTON_PRIMARY))
+        secondary = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
+        secondary.connect("pressed", lambda *_args: self.emit("picked", Gdk.BUTTON_SECONDARY))
+        self.add_controller(secondary)
+        if label:
+            self.set_label_text(label)
+
+    def set_label_text(self, label: str) -> None:
+        """What a screen reader reads out, since the button shows only colour."""
+        self.set_tooltip_text(label)
+        self.update_property([Gtk.AccessibleProperty.LABEL], [label])
 
     @property
     def color(self) -> Gdk.RGBA:
@@ -79,12 +107,9 @@ class Swatch(Gtk.DrawingArea):
     @color.setter
     def color(self, value: Gdk.RGBA) -> None:
         self._color = value
-        self.queue_draw()
+        self._area.queue_draw()
 
-    def _on_pressed(self, gesture, n_press, x, y):
-        self.emit("picked", gesture.get_current_button())
-
-    def _draw(self, area, cr, width, height, *_):
+    def _draw(self, area, cr, width, height, *_args):
         radius = 4
         cr.new_sub_path()
         cr.arc(width - radius, radius, radius, -1.5708, 0)
@@ -96,7 +121,7 @@ class Swatch(Gtk.DrawingArea):
         cr.set_source_rgba(self._color.red, self._color.green, self._color.blue, self._color.alpha)
         cr.fill_preserve()
 
-        outline = self.get_color()
+        outline = area.get_color()
         cr.set_source_rgba(outline.red, outline.green, outline.blue, 0.25)
         cr.set_line_width(1)
         cr.stroke()
@@ -117,10 +142,8 @@ class ColorBar(Gtk.Box):
 
         self._primary_swatch = Swatch(colors.primary, size=32)
         self._secondary_swatch = Swatch(colors.secondary, size=32)
-        self._primary_swatch.set_tooltip_text("Primary color — click to change")
-        self._secondary_swatch.set_tooltip_text("Secondary color — click to change")
-        self._primary_swatch.connect("picked", lambda *_: self._choose(primary=True))
-        self._secondary_swatch.connect("picked", lambda *_: self._choose(primary=False))
+        self._primary_swatch.connect("picked", lambda *_args: self._choose(primary=True))
+        self._secondary_swatch.connect("picked", lambda *_args: self._choose(primary=False))
 
         current = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         current.set_halign(Gtk.Align.CENTER)
@@ -132,7 +155,7 @@ class ColorBar(Gtk.Box):
         self.swap_button.add_css_class("flat")
         self.swap_button.set_halign(Gtk.Align.CENTER)
         self.swap_button.set_valign(Gtk.Align.CENTER)
-        self.swap_button.connect("clicked", lambda *_: colors.swap())
+        self.swap_button.connect("clicked", lambda *_args: colors.swap())
 
         # The current colors and the swap button, side by side or stacked.
         self._current_row = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER)
@@ -142,15 +165,15 @@ class ColorBar(Gtk.Box):
 
         self._grid = Gtk.Grid(row_spacing=4, column_spacing=4)
         self._palette_swatches = []
-        for spec in PALETTE:
-            swatch = Swatch(rgba(spec))
-            swatch.set_tooltip_text(spec)
+        for name, spec in PALETTE:
+            swatch = Swatch(rgba(spec), label=_("{name} ({hex})").format(name=name, hex=spec))
             swatch.connect("picked", self._on_palette_picked)
             self._palette_swatches.append(swatch)
         self.append(self._grid)
 
         self.set_layout(PaletteLayout.WIDE)
         colors.connect("changed", self._sync)
+        self._sync()
 
     def set_layout(self, layout: str) -> None:
         """Lay out for the bottom bar, a narrow strip beside the canvas, or the tool sidebar."""
@@ -183,12 +206,18 @@ class ColorBar(Gtk.Box):
         else:
             self.colors.primary = swatch.color
 
-    def _sync(self, *_):
+    def _sync(self, *_args):
         self._primary_swatch.color = self.colors.primary
         self._secondary_swatch.color = self.colors.secondary
+        self._primary_swatch.set_label_text(
+            _("Primary color, {color}").format(color=describe(self.colors.primary))
+        )
+        self._secondary_swatch.set_label_text(
+            _("Secondary color, {color}").format(color=describe(self.colors.secondary))
+        )
 
     def _choose(self, primary: bool) -> None:
-        dialog = Gtk.ColorDialog(with_alpha=False)
+        dialog = Gtk.ColorDialog(with_alpha=False, title=_("Choose a color"))
         initial = self.colors.primary if primary else self.colors.secondary
 
         def on_done(source, result):

@@ -6,6 +6,7 @@ from __future__ import annotations
 import cairo
 from gi.repository import Gdk
 
+from ..i18n import _
 from .base import Tool, ToolContext
 
 TOLERANCE = 32
@@ -110,7 +111,7 @@ def flood_fill(surface: cairo.ImageSurface, x: int, y: int, color: Gdk.RGBA,
 
 class FillTool(Tool):
     id = "fill"
-    label = "Fill"
+    label = _("Fill")
     icon_name = "tempera-fill-symbolic"
 
     def press(self, ctx: ToolContext, x, y):

@@ -212,7 +212,7 @@ def test_finish_change_drops_an_edit_that_changed_no_pixels():
     paint_change(document)
     document.undo()
     changes = []
-    document.connect("content-changed", lambda *_: changes.append(True))
+    document.connect("content-changed", lambda *_args: changes.append(True))
 
     document.begin_change()
     paint_pixel(document.surface, 1, 1, WHITE)  # white over white

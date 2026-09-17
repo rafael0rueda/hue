@@ -250,7 +250,7 @@ def test_save_document_updates_document_state(tmp_path):
     document = Document(new_surface(1, 1, WHITE))
     document.modified = True
     seen = []
-    document.connect("state-changed", lambda *_: seen.append(True))
+    document.connect("state-changed", lambda *_args: seen.append(True))
 
     file = gio_file(tmp_path / "out.png")
     save_document(document, file)

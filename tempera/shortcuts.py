@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from gi.repository import Gdk, Gtk
 
 from . import settings
+from .i18n import _
 from .tools import TOOL_CLASSES
 
 
@@ -40,57 +41,57 @@ TOOL_KEYS = {
 
 SHORTCUT_GROUPS: list[tuple[str, list[Shortcut]]] = [
     (
-        "File",
+        _("File"),
         [
-            Shortcut("win.new", "New Image", ("<Control>n",)),
-            Shortcut("win.open", "Open Image", ("<Control>o",)),
-            Shortcut("win.save", "Save", ("<Control>s",)),
-            Shortcut("win.save-as", "Save As", ("<Control><Shift>s",)),
+            Shortcut("win.new", _("New Image"), ("<Control>n",)),
+            Shortcut("win.open", _("Open Image"), ("<Control>o",)),
+            Shortcut("win.save", _("Save"), ("<Control>s",)),
+            Shortcut("win.save-as", _("Save As"), ("<Control><Shift>s",)),
         ],
     ),
     (
-        "Edit",
+        _("Edit"),
         [
-            Shortcut("win.undo", "Undo", ("<Control>z",)),
-            Shortcut("win.redo", "Redo", ("<Control><Shift>z", "<Control>y")),
-            Shortcut("win.select-all", "Select All", ("<Control>a",)),
-            Shortcut("win.cut", "Cut", ("<Control>x",)),
-            Shortcut("win.copy", "Copy", ("<Control>c",)),
-            Shortcut("win.paste", "Paste", ("<Control>v",)),
+            Shortcut("win.undo", _("Undo"), ("<Control>z",)),
+            Shortcut("win.redo", _("Redo"), ("<Control><Shift>z", "<Control>y")),
+            Shortcut("win.select-all", _("Select All"), ("<Control>a",)),
+            Shortcut("win.cut", _("Cut"), ("<Control>x",)),
+            Shortcut("win.copy", _("Copy"), ("<Control>c",)),
+            Shortcut("win.paste", _("Paste"), ("<Control>v",)),
         ],
     ),
     (
-        "Image",
+        _("Image"),
         [
-            Shortcut("win.resize", "Canvas Size", ("<Control>e",)),
-            Shortcut("win.crop", "Crop to Selection", ()),
-            Shortcut("win.rotate-cw", "Rotate Clockwise", ()),
-            Shortcut("win.rotate-ccw", "Rotate Counterclockwise", ()),
-            Shortcut("win.flip-horizontal", "Flip Horizontal", ()),
-            Shortcut("win.flip-vertical", "Flip Vertical", ()),
+            Shortcut("win.resize", _("Canvas Size"), ("<Control>e",)),
+            Shortcut("win.crop", _("Crop to Selection"), ()),
+            Shortcut("win.rotate-cw", _("Rotate Clockwise"), ()),
+            Shortcut("win.rotate-ccw", _("Rotate Counterclockwise"), ()),
+            Shortcut("win.flip-horizontal", _("Flip Horizontal"), ()),
+            Shortcut("win.flip-vertical", _("Flip Vertical"), ()),
         ],
     ),
     (
-        "View",
+        _("View"),
         [
-            Shortcut("win.zoom-in", "Zoom In", ("<Control>plus", "<Control>equal", "<Control>KP_Add")),
-            Shortcut("win.zoom-out", "Zoom Out", ("<Control>minus", "<Control>KP_Subtract")),
-            Shortcut("win.zoom-reset", "Reset Zoom", ("<Control>0", "<Control>KP_0")),
+            Shortcut("win.zoom-in", _("Zoom In"), ("<Control>plus", "<Control>equal", "<Control>KP_Add")),
+            Shortcut("win.zoom-out", _("Zoom Out"), ("<Control>minus", "<Control>KP_Subtract")),
+            Shortcut("win.zoom-reset", _("Reset Zoom"), ("<Control>0", "<Control>KP_0")),
         ],
     ),
     (
-        "Tools",
+        _("Tools"),
         [
             Shortcut(f"win.tool::{tool.id}", tool.label, (TOOL_KEYS[tool.id],))
             for tool in TOOL_CLASSES
         ],
     ),
-    ("Colors", [Shortcut("win.swap-colors", "Swap Colors", ("x",))]),
+    (_("Colors"), [Shortcut("win.swap-colors", _("Swap Colors"), ("x",))]),
     (
-        "Application",
+        _("Application"),
         [
-            Shortcut("win.shortcuts", "Keyboard Shortcuts", ("<Control>question",)),
-            Shortcut("app.quit", "Quit", ("<Control>q",)),
+            Shortcut("win.shortcuts", _("Keyboard Shortcuts"), ("<Control>question",)),
+            Shortcut("app.quit", _("Quit"), ("<Control>q",)),
         ],
     ),
 ]
@@ -100,11 +101,11 @@ SHORTCUTS = {shortcut.action: shortcut for _group, items in SHORTCUT_GROUPS for 
 # Keys the canvas handles itself while something is selected, pasted or typed.
 # They are listed for reference but cannot be changed.
 CANVAS_KEYS = [
-    ("Nudge a selection or paste", "Hold Shift to move 10 pixels", "Left Right Up Down"),
-    ("Land a paste", None, "Return"),
-    ("Land typed text", None, "<Control>Return"),
-    ("Drop a selection, discard a paste or text", None, "Escape"),
-    ("Clear a selection", None, "Delete"),
+    (_("Nudge a selection or paste"), _("Hold Shift to move 10 pixels"), "Left Right Up Down"),
+    (_("Land a paste"), None, "Return"),
+    (_("Land typed text"), None, "<Control>Return"),
+    (_("Drop a selection, discard a paste or text"), None, "Escape"),
+    (_("Clear a selection"), None, "Delete"),
 ]
 
 _RESERVED_KEYS = {
@@ -168,11 +169,13 @@ def problem_with(accel: str) -> str | None:
     """Why an accelerator cannot be used as a shortcut, or None if it can."""
     ok, keyval, mods = Gtk.accelerator_parse(accel)
     if not ok or keyval == 0:
-        return "That key cannot be used as a shortcut."
+        return _("That key cannot be used as a shortcut.")
     if keyval in _RESERVED_KEYS:
-        return f"{label(accel)} is kept for the canvas and dialogs, so it cannot be a shortcut."
+        return _(
+            "{key} is kept for the canvas and dialogs, so it cannot be a shortcut."
+        ).format(key=label(accel))
     if not Gtk.accelerator_valid(keyval, mods):
-        return "That key cannot be used as a shortcut."
+        return _("That key cannot be used as a shortcut.")
     return None
 
 
@@ -303,4 +306,4 @@ def suspend(application: Gtk.Application, suspended: bool) -> None:
 
 def tooltip(text: str, action: str) -> str:
     keys = keys_for(action)
-    return f"{text} ({label(keys[0])})" if keys else text
+    return _("{text} ({key})").format(text=text, key=label(keys[0])) if keys else text

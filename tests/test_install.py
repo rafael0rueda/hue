@@ -49,7 +49,7 @@ def test_nothing_is_still_called_hue():
     """The app was renamed from Hue; only the deliberate references to that remain."""
     allowed = {
         "tempera/settings.py": ['OLD_CONFIG_NAME = "hue"', "called Hue"],
-        "data/io.github.rafael0rueda.Tempera.metainfo.xml": [
+        "data/io.github.rafael0rueda.Tempera.metainfo.xml.in": [
             "io.github.rafael0rueda.Hue",
             "called Hue",
             "Hue is now called Tempera",
@@ -80,7 +80,9 @@ def test_nothing_is_still_called_hue():
 def test_the_desktop_file_opens_what_the_open_dialog_does():
     from tempera.file_io import OPEN_MIME_TYPES
 
-    desktop = (ROOT / "data" / "io.github.rafael0rueda.Tempera.desktop").read_text(encoding="utf-8")
+    desktop = (ROOT / "data" / "io.github.rafael0rueda.Tempera.desktop.in").read_text(
+        encoding="utf-8"
+    )
     line = next(line for line in desktop.splitlines() if line.startswith("MimeType="))
     assert set(filter(None, line.removeprefix("MimeType=").split(";"))) == set(OPEN_MIME_TYPES)
 
@@ -117,3 +119,36 @@ def test_the_flatpak_asks_for_nothing_it_does_not_need():
         "--share=ipc",
         "--device=dri",
     }
+
+
+def test_every_file_with_translatable_strings_is_listed_for_translators():
+    """A string left out of POTFILES.in can never be translated, and nothing else would say so."""
+    call = re.compile(r"(?<![\w.])_\(")
+    listed = {
+        line.strip()
+        for line in (ROOT / "po" / "POTFILES.in").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    marked = {
+        str(path.relative_to(ROOT))
+        for path in PACKAGE.rglob("*.py")
+        if call.search(path.read_text(encoding="utf-8")) and path.name != "i18n.py"
+    }
+    assert marked - listed == set()
+    assert all((ROOT / name).is_file() for name in listed)
+
+
+def test_the_build_installs_translations_and_tells_the_app_where_they_are():
+    assert "subdir('po')" in (ROOT / "meson.build").read_text(encoding="utf-8")
+    assert "i18n.gettext" in (ROOT / "po" / "meson.build").read_text(encoding="utf-8")
+    assert "TEMPERA_LOCALE_DIR" in (ROOT / "tempera" / "tempera.in").read_text(encoding="utf-8")
+
+
+def test_no_user_visible_string_is_built_with_an_f_string():
+    """Translators need whole sentences with named places, which f-strings cannot give them."""
+    offenders = []
+    for path in PACKAGE.rglob("*.py"):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"(?<![\w.])_\(\s*f[\"']", line):
+                offenders.append(f"{path.relative_to(ROOT)}:{number}")
+    assert offenders == []

@@ -258,6 +258,23 @@ the same way a paste does. Because the image should look the same everywhere, th
 is laid out at 96 dpi regardless of the desktop's text scaling, so a size of 24 always
 gives the same pixels.
 
+## Keyboard and screen readers
+
+Every tool, menu item and file action has a keyboard shortcut, and `Tab` moves through
+the sidebar, the palette and the bottom bar. The colour swatches are buttons: `Tab` to
+one and press `Enter` or `Space` to make it the primary colour, then `X` to swap the
+primary and secondary colours around. With a pointer, right-clicking a swatch sets the
+secondary colour directly.
+
+Buttons that show only an icon carry a name for screen readers, the swatches announce
+their colour by name ("Light blue (#99c1f1)"), and the canvas announces its size.
+
+## Translations
+
+Tempera is in English, but every string a person reads is marked for translation, and
+the desktop entry and app metadata are translated at build time. [po/README.md](po/README.md)
+explains how to add a language; no code has to change.
+
 ## Privacy
 
 Tempera works entirely offline: no network, no update checks, no telemetry, no accounts.

@@ -52,6 +52,18 @@
   margin: 24px;
 }
 
+/* A button so it can be tabbed to and read out, but drawn as a bare square:
+   the colour itself is the whole point. */
 .tempera-swatch {
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+  border: none;
   border-radius: 4px;
+  background: none;
+  box-shadow: none;
+}
+
+.tempera-swatch:hover {
+  background: alpha(currentColor, 0.1);
 }

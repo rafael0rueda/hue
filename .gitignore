@@ -9,3 +9,5 @@ _build/
 # flatpak-builder output
 .flatpak-builder/
 repo/
+po/*.pot
+po/*.mo

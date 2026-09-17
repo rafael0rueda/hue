@@ -3,12 +3,13 @@
 
 from gi.repository import Gdk
 
+from ..i18n import _
 from .base import Tool, ToolContext
 
 
 class PickerTool(Tool):
     id = "picker"
-    label = "Color picker"
+    label = _("Color picker")
     icon_name = "tempera-picker-symbolic"
     mutates = False
 

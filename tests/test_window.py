@@ -293,7 +293,7 @@ def test_painting_while_a_save_runs_leaves_the_image_modified(window, tmp_path):
 def test_a_second_save_is_ignored_while_one_is_running(window, tmp_path):
     window.canvas.document.file = Gio.File.new_for_path(str(tmp_path / "drawing.png"))
     saves = []
-    window.canvas.document.connect("state-changed", lambda *_: saves.append(True))
+    window.canvas.document.connect("state-changed", lambda *_args: saves.append(True))
 
     window.activate_action("win.save", None)
     window.activate_action("win.save", None)

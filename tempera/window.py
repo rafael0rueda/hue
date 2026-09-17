@@ -10,6 +10,7 @@ from .canvas import Canvas, CanvasFrame
 from .clipboard import has_image, read_image, texture_from_surface
 from .color import ColorBar, ColorState, PaletteLayout
 from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_SIZE, Document, new_surface
+from .i18n import _
 from .file_io import (
     format_for,
     image_filters,
@@ -57,10 +58,10 @@ class TemperaWindow(Adw.ApplicationWindow):
         self.canvas.connect("color-picked", self._on_color_picked)
         self.canvas.connect("resize-preview", self._on_resize_preview)
         self.canvas.connect("floating-changed", self._on_floating_changed)
-        self.canvas.connect("selection-changed", lambda *_: self._sync_selection_actions())
+        self.canvas.connect("selection-changed", lambda *_args: self._sync_selection_actions())
         self.canvas.connect("zoom-changed", self._on_zoom_changed)
         self.canvas.connect("pointer-moved", self._on_pointer_moved)
-        self.canvas.connect("pointer-left", lambda *_: self._cursor_label.set_label(""))
+        self.canvas.connect("pointer-left", lambda *_args: self._cursor_label.set_label(""))
         self.canvas.connect("message", lambda _canvas, message: self.show_toast(message))
         self._closing = False
         self._busy = False
@@ -129,45 +130,46 @@ class TemperaWindow(Adw.ApplicationWindow):
 
         menu = Gio.Menu()
         edit_section = Gio.Menu()
-        edit_section.append("Select All", "win.select-all")
-        edit_section.append("Cut", "win.cut")
-        edit_section.append("Copy", "win.copy")
-        edit_section.append("Paste", "win.paste")
+        edit_section.append(_("Select All"), "win.select-all")
+        edit_section.append(_("Cut"), "win.cut")
+        edit_section.append(_("Copy"), "win.copy")
+        edit_section.append(_("Paste"), "win.paste")
         menu.append_section(None, edit_section)
         image_section = Gio.Menu()
-        image_section.append("Crop to Selection", "win.crop")
-        image_section.append("Rotate Clockwise", "win.rotate-cw")
-        image_section.append("Rotate Counterclockwise", "win.rotate-ccw")
-        image_section.append("Flip Horizontal", "win.flip-horizontal")
-        image_section.append("Flip Vertical", "win.flip-vertical")
+        image_section.append(_("Crop to Selection"), "win.crop")
+        image_section.append(_("Rotate Clockwise"), "win.rotate-cw")
+        image_section.append(_("Rotate Counterclockwise"), "win.rotate-ccw")
+        image_section.append(_("Flip Horizontal"), "win.flip-horizontal")
+        image_section.append(_("Flip Vertical"), "win.flip-vertical")
         menu.append_section(None, image_section)
         view_section = Gio.Menu()
-        view_section.append("Zoom In", "win.zoom-in")
-        view_section.append("Zoom Out", "win.zoom-out")
-        view_section.append("Reset Zoom", "win.zoom-reset")
+        view_section.append(_("Zoom In"), "win.zoom-in")
+        view_section.append(_("Zoom Out"), "win.zoom-out")
+        view_section.append(_("Reset Zoom"), "win.zoom-reset")
         palette_menu = Gio.Menu()
-        palette_menu.append("Bottom", "win.palette-position::bottom")
-        palette_menu.append("Left", "win.palette-position::left")
-        palette_menu.append("Right", "win.palette-position::right")
-        view_section.append_submenu("Palette Position", palette_menu)
+        palette_menu.append(_("Bottom"), "win.palette-position::bottom")
+        palette_menu.append(_("Left"), "win.palette-position::left")
+        palette_menu.append(_("Right"), "win.palette-position::right")
+        view_section.append_submenu(_("Palette Position"), palette_menu)
         menu.append_section(None, view_section)
         file_section = Gio.Menu()
-        file_section.append_submenu("Recent Files", self._recent_menu)
-        file_section.append("Save As…", "win.save-as")
-        file_section.append("Canvas Size…", "win.resize")
+        file_section.append_submenu(_("Recent Files"), self._recent_menu)
+        file_section.append(_("Save As…"), "win.save-as")
+        file_section.append(_("Canvas Size…"), "win.resize")
         menu.append_section(None, file_section)
         app_section = Gio.Menu()
-        app_section.append("Keyboard Shortcuts", "win.shortcuts")
-        app_section.append(f"About {APP_NAME}", "app.about")
-        app_section.append("Quit", "app.quit")
+        app_section.append(_("Keyboard Shortcuts"), "win.shortcuts")
+        app_section.append(_("About {app}").format(app=APP_NAME), "app.about")
+        app_section.append(_("Quit"), "app.quit")
         menu.append_section(None, app_section)
 
-        menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic", tooltip_text="Main menu")
+        menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic", tooltip_text=_("Main menu"))
         menu_button.set_menu_model(menu)
+        menu_button.update_property([Gtk.AccessibleProperty.LABEL], [_("Main menu")])
 
         # Shown while an image is being read or written, which happens off the
         # UI thread so that a large file does not freeze the window.
-        self._busy_spinner = Adw.Spinner(visible=False, tooltip_text="Working…")
+        self._busy_spinner = Adw.Spinner(visible=False, tooltip_text=_("Working…"))
 
         header.pack_end(menu_button)
         header.pack_end(history)
@@ -276,7 +278,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         sidebar.append(self._size_scale)
         self._sync_size_scale()
 
-        self._fill_check = Gtk.CheckButton(label="Fill shape")
+        self._fill_check = Gtk.CheckButton(label=_("Fill shape"))
         self._fill_check.set_sensitive(False)
         self._fill_check.connect("toggled", self._on_fill_toggled)
         sidebar.append(self._fill_check)
@@ -289,7 +291,12 @@ class TemperaWindow(Adw.ApplicationWindow):
         self._font_label.set_ellipsize(Pango.EllipsizeMode.END)
         sidebar.append(self._font_label)
 
-        self._font_button = Gtk.Button(label="Font…", tooltip_text="Typeface for the text tool")
+        self._font_button = Gtk.Button(
+            label=_("Font…"), tooltip_text=_("Typeface for the text tool")
+        )
+        self._font_button.update_property(
+            [Gtk.AccessibleProperty.DESCRIPTION], [_("Typeface for the text tool")]
+        )
         self._font_button.set_sensitive(False)
         self._font_button.connect("clicked", self._choose_font)
         sidebar.append(self._font_button)
@@ -318,26 +325,26 @@ class TemperaWindow(Adw.ApplicationWindow):
         simple_actions = {
             "new": self._action_new,
             "open": self._action_open,
-            "save": lambda *_: self._save(),
-            "save-as": lambda *_: self._save_as(),
+            "save": lambda *_args: self._save(),
+            "save-as": lambda *_args: self._save_as(),
             "undo": self._action_undo,
-            "redo": lambda *_: self.canvas.document.redo(),
-            "select-all": lambda *_: self._select_all(),
-            "cut": lambda *_: self._cut(),
-            "copy": lambda *_: self._copy(),
-            "paste": lambda *_: self._paste(),
-            "swap-colors": lambda *_: self.colors.swap(),
-            "shortcuts": lambda *_: ShortcutsDialog(self.get_application()).present(self),
-            "clear-recent": lambda *_: self._clear_recent(),
-            "resize": lambda *_: self._prompt_canvas_size(),
-            "zoom-in": lambda *_: self.canvas.zoom_in(),
-            "zoom-out": lambda *_: self.canvas.zoom_out(),
-            "zoom-reset": lambda *_: self.canvas.reset_zoom(),
-            "crop": lambda *_: self.canvas.crop_to_selection(),
-            "rotate-cw": lambda *_: self._transform_image(lambda d: d.rotate(True)),
-            "rotate-ccw": lambda *_: self._transform_image(lambda d: d.rotate(False)),
-            "flip-horizontal": lambda *_: self._transform_image(lambda d: d.flip(True)),
-            "flip-vertical": lambda *_: self._transform_image(lambda d: d.flip(False)),
+            "redo": lambda *_args: self.canvas.document.redo(),
+            "select-all": lambda *_args: self._select_all(),
+            "cut": lambda *_args: self._cut(),
+            "copy": lambda *_args: self._copy(),
+            "paste": lambda *_args: self._paste(),
+            "swap-colors": lambda *_args: self.colors.swap(),
+            "shortcuts": lambda *_args: ShortcutsDialog(self.get_application()).present(self),
+            "clear-recent": lambda *_args: self._clear_recent(),
+            "resize": lambda *_args: self._prompt_canvas_size(),
+            "zoom-in": lambda *_args: self.canvas.zoom_in(),
+            "zoom-out": lambda *_args: self.canvas.zoom_out(),
+            "zoom-reset": lambda *_args: self.canvas.reset_zoom(),
+            "crop": lambda *_args: self.canvas.crop_to_selection(),
+            "rotate-cw": lambda *_args: self._transform_image(lambda d: d.rotate(True)),
+            "rotate-ccw": lambda *_args: self._transform_image(lambda d: d.rotate(False)),
+            "flip-horizontal": lambda *_args: self._transform_image(lambda d: d.flip(True)),
+            "flip-vertical": lambda *_args: self._transform_image(lambda d: d.flip(False)),
         }
         for name, callback in simple_actions.items():
             action = Gio.SimpleAction.new(name, None)
@@ -368,7 +375,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         shortcuts.apply_accels(self.get_application())
 
         clipboard = self.get_clipboard()
-        clipboard.connect("changed", lambda *_: self._sync_paste_action())
+        clipboard.connect("changed", lambda *_args: self._sync_paste_action())
         self._sync_paste_action()
         self._sync_selection_actions()
 
@@ -448,14 +455,14 @@ class TemperaWindow(Adw.ApplicationWindow):
         self._show_size(size)
 
     def _show_size(self, size: int) -> None:
-        unit = "pt" if self.canvas.supports_font else "px"
-        self._size_label.set_label(f"Size: {size} {unit}")
+        unit = _("pt") if self.canvas.supports_font else _("px")
+        self._size_label.set_label(_("Size: {size} {unit}").format(size=size, unit=unit))
 
     def _on_fill_toggled(self, check: Gtk.CheckButton) -> None:
         self.canvas.fill_shapes = check.get_active()
 
-    def _choose_font(self, *_) -> None:
-        dialog = Gtk.FontDialog(title="Text font")
+    def _choose_font(self, *_args) -> None:
+        dialog = Gtk.FontDialog(title=_("Text font"))
 
         def on_done(source, result):
             try:
@@ -480,7 +487,7 @@ class TemperaWindow(Adw.ApplicationWindow):
 
     def _watch_document(self) -> None:
         document = self.canvas.document
-        document.connect("state-changed", lambda *_: self._sync_state())
+        document.connect("state-changed", lambda *_args: self._sync_state())
         self._sync_state()
 
     def _set_document(self, document: Document) -> None:
@@ -494,12 +501,12 @@ class TemperaWindow(Adw.ApplicationWindow):
         # While a paste or a text box floats this counts out the size a commit
         # would leave.
         width, height = self.canvas.pending_size
-        self._canvas_size_label.set_label(f"{width} × {height} px")
+        self._canvas_size_label.set_label(_("{width} × {height} px").format(width=width, height=height))
         # Undo also takes back what has not been stamped down yet.
         self.lookup_action("undo").set_enabled(document.can_undo or self.canvas.has_floating)
         self.lookup_action("redo").set_enabled(document.can_redo)
 
-    def _on_floating_changed(self, *_) -> None:
+    def _on_floating_changed(self, *_args) -> None:
         self._sync_state()
         self._sync_typing_accels()
 
@@ -513,6 +520,9 @@ class TemperaWindow(Adw.ApplicationWindow):
     def _add_shortcut_tooltip(self, widget: Gtk.Widget, text: str, action: str) -> None:
         self._shortcut_tooltips.append((widget, text, action))
         widget.set_tooltip_text(shortcuts.tooltip(text, action))
+        # A tooltip is only a description; a button showing an icon needs a name
+        # of its own for a screen reader to have anything to read out.
+        widget.update_property([Gtk.AccessibleProperty.LABEL], [text])
 
     def refresh_shortcut_tooltips(self) -> None:
         """Show the current keys after the user changes a shortcut."""
@@ -521,7 +531,7 @@ class TemperaWindow(Adw.ApplicationWindow):
 
     def _on_resize_preview(self, canvas, width: int, height: int) -> None:
         """Count out the pending size while a resize grip is being dragged."""
-        self._canvas_size_label.set_label(f"{width} × {height} px")
+        self._canvas_size_label.set_label(_("{width} × {height} px").format(width=width, height=height))
 
     def _on_zoom_label_scroll(self, controller, dx: float, dy: float) -> bool:
         if dy < 0:
@@ -534,7 +544,11 @@ class TemperaWindow(Adw.ApplicationWindow):
         self._zoom_label.set_label(f"{round(zoom * 100)}%")
 
     def _on_pointer_moved(self, canvas, x: float, y: float) -> None:
-        self._cursor_label.set_label(f"{round(x)}, {round(y)} px")
+        self._cursor_label.set_label(_("{x}, {y} px").format(x=round(x), y=round(y)))
+        self._cursor_label.update_property(
+            [Gtk.AccessibleProperty.LABEL],
+            [_("Pointer at {x}, {y} pixels").format(x=round(x), y=round(y))],
+        )
 
     def _transform_image(self, apply) -> None:
         """Whatever floats or is selected does not survive a rotate or flip."""
@@ -567,7 +581,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         # A selection narrows the copy down to itself; otherwise it is the canvas.
         selection = self.canvas.selection_surface()
         self._put_on_clipboard(selection or self.canvas.document.surface)
-        self.show_toast("Copied the selection" if selection else "Copied to clipboard")
+        self.show_toast(_("Copied the selection") if selection else _("Copied to clipboard"))
 
     def _cut(self) -> None:
         self.canvas.commit_floating()
@@ -576,12 +590,12 @@ class TemperaWindow(Adw.ApplicationWindow):
             return
         self._put_on_clipboard(selection)
         self.canvas.delete_selection()
-        self.show_toast("Cut the selection")
+        self.show_toast(_("Cut the selection"))
 
     def _paste(self) -> None:
         read_image(self.get_clipboard(), self.canvas.begin_paste, self.show_toast)
 
-    def _action_undo(self, *_) -> None:
+    def _action_undo(self, *_args) -> None:
         # A paste or a text box has not been stamped down yet, so undo drops it.
         if not self.canvas.cancel_floating():
             self.canvas.document.undo()
@@ -599,12 +613,12 @@ class TemperaWindow(Adw.ApplicationWindow):
             return
 
         dialog = Adw.AlertDialog(
-            heading="Save changes?",
-            body=f"“{document.title}” has unsaved changes.",
+            heading=_("Save changes?"),
+            body=_("“{name}” has unsaved changes.").format(name=document.title),
         )
-        dialog.add_response("cancel", "Cancel")
-        dialog.add_response("discard", "Discard")
-        dialog.add_response("save", "Save")
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("discard", _("Discard"))
+        dialog.add_response("save", _("Save"))
         dialog.set_response_appearance("discard", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
         dialog.set_default_response("save")
@@ -619,7 +633,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         dialog.connect("response", on_response)
         dialog.present(self)
 
-    def _action_new(self, *_) -> None:
+    def _action_new(self, *_args) -> None:
         self._confirm_discard(self._prompt_new_size)
 
     def _prompt_size(self, heading, body, size, accept_id, accept_label, on_accept) -> None:
@@ -634,14 +648,14 @@ class TemperaWindow(Adw.ApplicationWindow):
         width_spin, height_spin = spins
 
         grid = Gtk.Grid(row_spacing=6, column_spacing=12, margin_top=12)
-        grid.attach(Gtk.Label(label="Width", xalign=1), 0, 0, 1, 1)
+        grid.attach(Gtk.Label(label=_("Width"), xalign=1), 0, 0, 1, 1)
         grid.attach(width_spin, 1, 0, 1, 1)
-        grid.attach(Gtk.Label(label="Height", xalign=1), 0, 1, 1, 1)
+        grid.attach(Gtk.Label(label=_("Height"), xalign=1), 0, 1, 1, 1)
         grid.attach(height_spin, 1, 1, 1, 1)
 
         dialog = Adw.AlertDialog(heading=heading, body=body)
         dialog.set_extra_child(grid)
-        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("cancel", _("Cancel"))
         dialog.add_response(accept_id, accept_label)
         dialog.set_response_appearance(accept_id, Adw.ResponseAppearance.SUGGESTED)
         dialog.set_default_response(accept_id)
@@ -659,11 +673,11 @@ class TemperaWindow(Adw.ApplicationWindow):
             self._set_document(Document(new_surface(width, height)))
 
         self._prompt_size(
-            "New image",
-            "Choose a canvas size in pixels.",
+            _("New image"),
+            _("Choose a canvas size in pixels."),
             (DEFAULT_WIDTH, DEFAULT_HEIGHT),
             "create",
-            "Create",
+            _("Create"),
             create,
         )
 
@@ -672,28 +686,28 @@ class TemperaWindow(Adw.ApplicationWindow):
         document = self.canvas.document
 
         self._prompt_size(
-            "Canvas size",
-            "The image keeps its top-left corner; extra space is filled with white.",
+            _("Canvas size"),
+            _("The image keeps its top-left corner; extra space is filled with white."),
             (document.width, document.height),
             "resize",
-            "Resize",
+            _("Resize"),
             document.resize,
         )
 
-    def _action_open(self, *_) -> None:
+    def _action_open(self, *_args) -> None:
         self._confirm_discard(self._show_open_dialog)
 
     def _show_open_dialog(self) -> None:
         if self._busy:
             return
-        dialog = Gtk.FileDialog(title="Open Image", filters=image_filters())
+        dialog = Gtk.FileDialog(title=_("Open Image"), filters=image_filters())
 
         def on_done(source, result):
             try:
                 file = source.open_finish(result)
             except GLib.Error:
                 return
-            self._open_file(file, "Could not open image: {message}")
+            self._open_file(file, _("Could not open image: {message}"))
 
         dialog.open(self, None, on_done)
 
@@ -718,7 +732,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         self._recent_menu.remove_all()
         recent = load_recent()
         if not recent:
-            self._recent_menu.append("No Recent Files", None)
+            self._recent_menu.append(_("No Recent Files"), None)
             return
         files = Gio.Menu()
         for uri in recent:
@@ -727,13 +741,13 @@ class TemperaWindow(Adw.ApplicationWindow):
             files.append_item(item)
         self._recent_menu.append_section(None, files)
         clearing = Gio.Menu()
-        clearing.append("Clear Recent Files", "win.clear-recent")
+        clearing.append(_("Clear Recent Files"), "win.clear-recent")
         self._recent_menu.append_section(None, clearing)
 
     def _clear_recent(self) -> None:
         clear_recent()
         self._refresh_recent_menu()
-        self.show_toast("Cleared the recent files")
+        self.show_toast(_("Cleared the recent files"))
 
     def _remember_recent(self, file: Gio.File) -> None:
         remember_recent(file)
@@ -749,7 +763,11 @@ class TemperaWindow(Adw.ApplicationWindow):
                 forget_recent(uri)
                 self._refresh_recent_menu()
 
-            self._open_file(file, f"Could not open “{file.get_basename()}”: {{message}}", forget)
+            self._open_file(
+                file,
+                _("Could not open “{name}”: {{message}}").format(name=file.get_basename()),
+                forget,
+            )
 
         self._confirm_discard(proceed)
 
@@ -772,7 +790,7 @@ class TemperaWindow(Adw.ApplicationWindow):
             return
         self.canvas.commit_floating()
         document = self.canvas.document
-        dialog = Gtk.FileDialog(title="Save Image", filters=image_filters())
+        dialog = Gtk.FileDialog(title=_("Save Image"), filters=image_filters())
         if document.file is None:
             dialog.set_initial_name("Untitled.png")
         else:
@@ -794,11 +812,11 @@ class TemperaWindow(Adw.ApplicationWindow):
 
     def _confirm_replace(self, file: Gio.File, proceed) -> None:
         dialog = Adw.AlertDialog(
-            heading=f"Replace “{file.get_basename()}”?",
-            body="A file with this name already exists. Saving will overwrite it.",
+            heading=_("Replace “{name}”?").format(name=file.get_basename()),
+            body=_("A file with this name already exists. Saving will overwrite it."),
         )
-        dialog.add_response("cancel", "Cancel")
-        dialog.add_response("replace", "Replace")
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("replace", _("Replace"))
         dialog.set_response_appearance("replace", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.set_default_response("cancel")
         dialog.set_close_response("cancel")
@@ -824,12 +842,12 @@ class TemperaWindow(Adw.ApplicationWindow):
         scale.set_size_request(220, -1)
 
         dialog = Adw.AlertDialog(
-            heading="JPEG Quality",
-            body="Lower values make a smaller file but lose more detail.",
+            heading=_("JPEG Quality"),
+            body=_("Lower values make a smaller file but lose more detail."),
         )
         dialog.set_extra_child(scale)
-        dialog.add_response("cancel", "Cancel")
-        dialog.add_response("save", "Save")
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("save", _("Save"))
         dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
         dialog.set_default_response("save")
         dialog.set_close_response("cancel")
@@ -847,19 +865,19 @@ class TemperaWindow(Adw.ApplicationWindow):
 
         def on_saved() -> None:
             self._set_busy(False)
-            self.show_toast(f"Saved {file.get_basename()}")
+            self.show_toast(_("Saved {name}").format(name=file.get_basename()))
             self._remember_recent(file)
             if then is not None:
                 then()
 
         def on_error(message: str) -> None:
             self._set_busy(False)
-            self.show_toast(f"Could not save image: {message}")
+            self.show_toast(_("Could not save image: {message}").format(message=message))
 
         arguments = {} if quality is None else {"quality": quality}
         save_document_async(self.canvas.document, file, on_saved, on_error, **arguments)
 
-    def _on_close_request(self, *_) -> bool:
+    def _on_close_request(self, *_args) -> bool:
         if self._closing:
             return False
 

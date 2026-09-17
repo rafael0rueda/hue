@@ -9,9 +9,10 @@ import cairo
 from gi.repository import Gdk, Gio, GLib, GObject
 
 from .document import surface_from_pixbuf
+from .i18n import _
 from .file_io import check_image_size, load_surface
 
-NO_IMAGE = "No image in the clipboard"
+NO_IMAGE = _("No image in the clipboard")
 
 # Everything Tempera knows how to turn into pixels, in the order it is worth trying.
 IMAGE_TYPES = (Gdk.Texture, Gdk.FileList, Gio.File)

@@ -18,6 +18,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from . import APP_ID, APP_NAME, VERSION  # noqa: E402
 from .file_io import load_document  # noqa: E402
+from .i18n import _
 from .recent_files import remember_recent  # noqa: E402
 from .settings import migrate_old_config  # noqa: E402
 from .window import TemperaWindow  # noqa: E402
@@ -33,7 +34,13 @@ def metainfo_path(directory: Path | None = None) -> Path | None:
     if directory is None:
         return None
     name = f"{APP_ID}.metainfo.xml"
-    for candidate in (directory / name, directory.parent / "metainfo" / name):
+    # Installed, next to the data; or, running from the source tree, the
+    # template the translated one is built from.
+    for candidate in (
+        directory / name,
+        directory.parent / "metainfo" / name,
+        directory / (name + ".in"),
+    ):
         if candidate.is_file():
             return candidate
     return None
@@ -101,7 +108,9 @@ class TemperaApplication(Adw.Application):
         window.present()
         if error_message is not None:
             print(f"tempera: could not open image: {error_message}", file=sys.stderr)
-            window.show_toast(f"Could not open image: {error_message}")
+            window.show_toast(
+                _("Could not open image: {message}").format(message=error_message)
+            )
 
     def _load_resources(self) -> None:
         directory = data_dir()
@@ -124,7 +133,7 @@ class TemperaApplication(Adw.Application):
                 display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
             )
 
-    def _on_quit(self, *_):
+    def _on_quit(self, *_args):
         # Each window asks about its own unsaved changes; the application ends
         # once the last one has gone.
         windows = self.get_windows()
@@ -133,14 +142,14 @@ class TemperaApplication(Adw.Application):
         for window in windows:
             window.close()
 
-    def _on_about(self, *_):
+    def _on_about(self, *_args):
         about = Adw.AboutDialog(
             application_name=APP_NAME,
             application_icon=APP_ID,
             version=VERSION,
             developer_name="Rafael Rueda",
             copyright="© 2026 Rafael Rueda",
-            comments="A simple, offline raster paint app for the GNOME desktop.",
+            comments=_("A simple, offline raster paint app for the GNOME desktop."),
             website=WEBSITE,
             issue_url=ISSUES,
             license_type=Gtk.License.GPL_3_0,

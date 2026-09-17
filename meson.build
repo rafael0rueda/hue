@@ -8,14 +8,17 @@ project('tempera',
 
 python = import('python').find_installation('python3')
 gnome = import('gnome')
+i18n = import('i18n')
 
 prefix = get_option('prefix')
 bindir = prefix / get_option('bindir')
 datadir = prefix / get_option('datadir')
 pkgdatadir = datadir / meson.project_name()
+localedir = prefix / get_option('localedir')
 
 subdir('tempera')
 subdir('data')
+subdir('po')
 subdir('tests')
 
 gnome.post_install(
