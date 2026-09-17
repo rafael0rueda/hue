@@ -3,4 +3,4 @@
 
 APP_ID = "io.github.rafael0rueda.Tempera"
 APP_NAME = "Tempera"
-VERSION = "0.4.0"
+VERSION = "0.5.0"

@@ -60,7 +60,7 @@
   <screenshots>
     <screenshot type="default">
       <caption>The main window with a blank canvas</caption>
-      <image type="source" width="1120" height="800">https://raw.githubusercontent.com/rafael0rueda/tempera/v0.4.0/data/screenshots/main-window.png</image>
+      <image type="source" width="1120" height="800">https://raw.githubusercontent.com/rafael0rueda/tempera/v0.5.0/data/screenshots/main-window.png</image>
     </screenshot>
   </screenshots>
   <categories>
@@ -68,6 +68,30 @@
     <category>RasterGraphics</category>
   </categories>
   <releases>
+    <release version="0.5.0" date="2026-09-17">
+      <description>
+        <p>Fixes and improvements:</p>
+        <ul>
+          <li>Photos open the right way up, following the orientation the camera recorded</li>
+          <li>Reading and writing happen in the background, so a large image no longer freezes the window</li>
+          <li>Saving never writes one format's data under another format's name, and an image opened from a format Tempera cannot write, such as GIF, is never overwritten</li>
+          <li>Only Save As asks for a JPEG quality; Ctrl+S keeps the one chosen</li>
+          <li>Ctrl+Q closes every window, asking in each one with unsaved changes</li>
+          <li>Cancelling the save prompt leaves a floating paste or typed text exactly as it was</li>
+          <li>Text an input method is still composing shows underlined at the caret</li>
+          <li>Saving to a network location no longer crashes</li>
+          <li>GIF and ICO images can be opened from the file dialog and the file manager</li>
+          <li>The About window names the author and links to the project and its release notes</li>
+        </ul>
+        <p>Privacy and accessibility:</p>
+        <ul>
+          <li>Recent Files follows the desktop's File History setting, and can be cleared from the menu</li>
+          <li>Files that are not ordinary images, such as named pipes, are refused instead of hanging the app</li>
+          <li>The colour palette can be used with the keyboard, and buttons, swatches and the canvas announce themselves to screen readers</li>
+          <li>Every string is ready to be translated, though Tempera still ships in English only</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.0" date="2026-09-17">
       <description>
         <p>Hue is now called Tempera, a name it can keep without clashing with other products.</p>
