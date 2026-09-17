@@ -99,7 +99,7 @@ is already there instead of replacing it. Colours picked lately gather in a seco
 beside the fixed palette, so a mixed colour is one click away next time.
 
 Each tool brings its own options under the size slider: **Fill shape** for the
-rectangle and ellipse, **Erase to transparency** for the eraser, a tolerance for the
+rectangle and ellipse, **Erase to nothing** for the eraser, a tolerance for the
 fill, and the font for the text tool.
 
 | Action                      | Shortcut                                         |

@@ -444,45 +444,53 @@ def test_a_small_image_opens_at_full_size(window, tmp_path):
     assert window.canvas.zoom == 1.0
 
 
-def test_middle_drag_pans_the_view(window):
-    window.present()
-    settle()
-    window.canvas.document.resize(4000, 3000)
-    settle()
-    horizontal = window._canvas_card.get_hadjustment()
-    horizontal.set_value(300)
+def test_middle_drag_pans_the_view(window, monkeypatch):
+    # Against adjustments of our own, so the test does not depend on the window
+    # having been given a size yet.
+    horizontal = Gtk.Adjustment(value=300, lower=0, upper=4000, page_size=800)
+    vertical = Gtk.Adjustment(value=100, lower=0, upper=3000, page_size=600)
+    monkeypatch.setattr(window.canvas, "_adjustments", lambda: (horizontal, vertical))
 
     window.canvas._on_pan_begin(None, 0, 0)
-    window.canvas._on_pan_update(None, -50, 0)
+    # Dragging the image left and up moves the view the other way.
+    window.canvas._on_pan_update(None, -50, -25)
 
-    assert horizontal.get_value() == 350
+    assert (horizontal.get_value(), vertical.get_value()) == (350, 125)
+
+    window.canvas._on_pan_update(None, 100, 0)
+    assert horizontal.get_value() == 200
+
+    window.canvas._on_pan_end(None, 100, 0)
+    assert window.canvas._pan_origin is None
 
 
 def test_tool_options_show_only_for_the_tool_in_hand(window):
     def use(tool):
         window.lookup_action("tool").change_state(GLib.Variant.new_string(tool))
 
+    def showing():
+        return window._tool_options.get_visible_child_name()
+
     use("rectangle")
-    assert window._fill_check.get_visible()
-    assert not window._tolerance_scale.get_visible()
-    assert not window._erase_check.get_visible()
+    assert showing() == "shape"
 
     use("fill")
-    assert window._tolerance_scale.get_visible()
-    assert not window._fill_check.get_visible()
+    assert showing() == "fill"
 
     use("eraser")
-    assert window._erase_check.get_visible()
+    assert showing() == "eraser"
 
     use("text")
-    assert window._font_button.get_visible()
-    assert not window._erase_check.get_visible()
+    assert showing() == "text"
+
+    use("pencil")
+    assert showing() == "none"
 
 
 def test_the_tolerance_slider_reaches_the_fill_tool(window):
     window._tolerance_scale.set_value(96)
     assert window.canvas.fill_tolerance == 96
-    assert "96" in window._tolerance_label.get_label()
+    assert "96" in window._tolerance_scale.get_tooltip_text()
 
 
 def test_erase_to_transparency_reaches_the_canvas(window):
@@ -556,3 +564,12 @@ def test_a_damaged_preference_falls_back_to_the_default(application, window, tmp
         assert reopened.canvas.active_tool.id == "pencil"
     finally:
         reopened.destroy()
+
+
+def test_the_sidebar_keeps_its_width_whichever_tool_is_in_hand(window):
+    """A long option label used to widen the sidebar and shove the canvas sideways."""
+    widths = set()
+    for tool in ("pencil", "rectangle", "fill", "eraser", "text"):
+        window.lookup_action("tool").change_state(GLib.Variant.new_string(tool))
+        widths.add(window._tool_options.measure(Gtk.Orientation.HORIZONTAL, -1)[1])
+    assert len(widths) == 1

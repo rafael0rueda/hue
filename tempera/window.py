@@ -54,8 +54,24 @@ IMAGE_ACTIONS = {
 BRUSH_SIZE_RANGE = (1, 64)
 # 0 fills only the exact colour clicked; the top end spreads across most shades.
 TOLERANCE_RANGE = (0, 128)
+# Wide enough for the palette block and the tool grid, and fixed, so that
+# switching tools never moves the canvas sideways.
+SIDEBAR_WIDTH = 128
 WHITE = (1.0, 1.0, 1.0, 1.0)
 TRANSPARENT = (0.0, 0.0, 0.0, 0.0)
+
+
+def _option_check(text: str) -> Gtk.CheckButton:
+    """A tool option whose label wraps rather than widening the sidebar."""
+    label = Gtk.Label(label=text, wrap=True, xalign=0)
+    # Two shortish lines rather than one long one, so that the widest option
+    # does not set the width of the whole sidebar.
+    label.set_max_width_chars(9)
+    label.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+    check = Gtk.CheckButton()
+    check.set_child(label)
+    check.update_property([Gtk.AccessibleProperty.LABEL], [text])
+    return check
 
 
 def _whole(text: str, fallback: int, limits: tuple[int, int] | None = None) -> int:
@@ -291,7 +307,7 @@ class TemperaWindow(Adw.ApplicationWindow):
     def _build_sidebar(self) -> Gtk.Widget:
         sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         sidebar.add_css_class("tempera-sidebar")
-        sidebar.set_size_request(128, -1)
+        sidebar.set_size_request(SIDEBAR_WIDTH, -1)
 
         tools = Gtk.Grid(row_spacing=6, column_spacing=6, halign=Gtk.Align.CENTER)
         for index, tool in enumerate(TOOL_CLASSES):
@@ -307,6 +323,7 @@ class TemperaWindow(Adw.ApplicationWindow):
 
         self._size_label = Gtk.Label(xalign=0)
         self._size_label.add_css_class("caption")
+        self._size_label.set_ellipsize(Pango.EllipsizeMode.END)
         sidebar.append(self._size_label)
 
         self._size_scale = Gtk.Scale.new_with_range(
@@ -318,42 +335,50 @@ class TemperaWindow(Adw.ApplicationWindow):
         sidebar.append(self._size_scale)
         self._sync_size_scale()
 
-        # Each tool's own options, shown only while that tool is in hand.
-        self._fill_check = Gtk.CheckButton(label=_("Fill shape"))
-        self._fill_check.connect("toggled", self._on_fill_toggled)
-        sidebar.append(self._fill_check)
+        # Each tool's own options. They live in a stack so that the sidebar is
+        # as wide as the widest of them whichever tool is in hand, rather than
+        # growing and shrinking as tools are picked.
+        self._tool_options = Gtk.Stack(hhomogeneous=True, vhomogeneous=False)
+        self._tool_options.add_named(Gtk.Box(), "none")
+        sidebar.append(self._tool_options)
 
-        self._erase_check = Gtk.CheckButton(label=_("Erase to transparency"))
+        self._fill_check = _option_check(_("Fill shape"))
+        self._fill_check.connect("toggled", self._on_fill_toggled)
+        self._tool_options.add_named(self._fill_check, "shape")
+
+        self._erase_check = _option_check(_("Erase to nothing"))
         self._erase_check.set_tooltip_text(
             _("Rub back to nothing instead of the secondary colour")
         )
         self._erase_check.connect(
             "toggled", lambda check: setattr(self.canvas, "erase_to_transparency", check.get_active())
         )
-        sidebar.append(self._erase_check)
+        self._tool_options.add_named(self._erase_check, "eraser")
 
+        tolerance_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self._tolerance_label = Gtk.Label(xalign=0)
         self._tolerance_label.add_css_class("caption")
-        sidebar.append(self._tolerance_label)
+        tolerance_box.append(self._tolerance_label)
         self._tolerance_scale = Gtk.Scale.new_with_range(
             Gtk.Orientation.HORIZONTAL, *TOLERANCE_RANGE, 1
         )
         self._tolerance_scale.set_value(self.canvas.fill_tolerance)
-        self._tolerance_scale.set_draw_value(False)
-        self._tolerance_scale.set_tooltip_text(
-            _("How far a fill spreads into colours near the one you clicked")
-        )
+        # The number rides on the slider, so the caption above stays short and
+        # the sidebar stays narrow.
+        self._tolerance_scale.set_draw_value(True)
         self._tolerance_scale.connect("value-changed", self._on_tolerance_changed)
-        sidebar.append(self._tolerance_scale)
+        tolerance_box.append(self._tolerance_scale)
+        self._tool_options.add_named(tolerance_box, "fill")
         self._show_tolerance(self.canvas.fill_tolerance)
 
         # A caption of our own rather than a GtkFontDialogButton, whose label
         # grows the sidebar to fit whatever font name it is showing. It leaves
         # the size out, because that is what the slider above is for.
+        font_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self._font_label = Gtk.Label(label=font_without_size(self.canvas.font), xalign=0)
         self._font_label.add_css_class("caption")
         self._font_label.set_ellipsize(Pango.EllipsizeMode.END)
-        sidebar.append(self._font_label)
+        font_box.append(self._font_label)
 
         self._font_button = Gtk.Button(
             label=_("Font…"), tooltip_text=_("Typeface for the text tool")
@@ -362,7 +387,8 @@ class TemperaWindow(Adw.ApplicationWindow):
             [Gtk.AccessibleProperty.DESCRIPTION], [_("Typeface for the text tool")]
         )
         self._font_button.connect("clicked", self._choose_font)
-        sidebar.append(self._font_button)
+        font_box.append(self._font_button)
+        self._tool_options.add_named(font_box, "text")
 
         # The palette's place when it is on the left: under the tool options.
         left_section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, visible=False)
@@ -373,7 +399,9 @@ class TemperaWindow(Adw.ApplicationWindow):
         self._palette_slots["left"] = (left_slot, left_section)
 
         # Scrolls rather than squeezing when the window is too short for it all,
-        # which the palette makes likelier.
+        # which the palette makes likelier. Its width does not follow the
+        # content: a long option label would otherwise widen the whole sidebar
+        # whenever that tool was picked.
         scrolled = Gtk.ScrolledWindow(
             hscrollbar_policy=Gtk.PolicyType.NEVER,
             vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
@@ -536,16 +564,26 @@ class TemperaWindow(Adw.ApplicationWindow):
         self._show_tolerance(self.canvas.fill_tolerance)
 
     def _show_tolerance(self, tolerance: int) -> None:
-        self._tolerance_label.set_label(_("Tolerance: {value}").format(value=tolerance))
+        self._tolerance_label.set_label(_("Tolerance"))
+        self._tolerance_scale.set_tooltip_text(
+            _("How far a fill spreads into colours near the one you clicked: {value}").format(
+                value=tolerance
+            )
+        )
 
     def _sync_tool_options(self) -> None:
-        """Show the options belonging to the tool in hand, and hide the rest."""
-        self._fill_check.set_visible(self.canvas.supports_fill)
-        self._erase_check.set_visible(self.canvas.supports_erase_mode)
-        self._tolerance_label.set_visible(self.canvas.supports_tolerance)
-        self._tolerance_scale.set_visible(self.canvas.supports_tolerance)
-        self._font_label.set_visible(self.canvas.supports_font)
-        self._font_button.set_visible(self.canvas.supports_font)
+        """Show the options belonging to the tool in hand, and none of the others."""
+        canvas = self.canvas
+        page = "none"
+        if canvas.supports_fill:
+            page = "shape"
+        elif canvas.supports_erase_mode:
+            page = "eraser"
+        elif canvas.supports_tolerance:
+            page = "fill"
+        elif canvas.supports_font:
+            page = "text"
+        self._tool_options.set_visible_child_name(page)
 
     def _choose_font(self, *_args) -> None:
         dialog = Gtk.FontDialog(title=_("Text font"))
