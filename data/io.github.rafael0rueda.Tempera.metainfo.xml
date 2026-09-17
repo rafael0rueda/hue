@@ -60,7 +60,7 @@
   <screenshots>
     <screenshot type="default">
       <caption>The main window with a blank canvas</caption>
-      <image type="source" width="1120" height="800">https://raw.githubusercontent.com/rafael0rueda/tempera/v0.3.0/data/screenshots/main-window.png</image>
+      <image type="source" width="1120" height="800">https://raw.githubusercontent.com/rafael0rueda/tempera/v0.4.0/data/screenshots/main-window.png</image>
     </screenshot>
   </screenshots>
   <categories>
@@ -68,6 +68,15 @@
     <category>RasterGraphics</category>
   </categories>
   <releases>
+    <release version="0.4.0" date="2026-09-17">
+      <description>
+        <p>Hue is now called Tempera, a name it can keep without clashing with other products.</p>
+        <ul>
+          <li>Your settings, keyboard shortcuts and recent files are carried over from Hue the first time Tempera starts</li>
+          <li>The app ID is now io.github.rafael0rueda.Tempera, and the project lives at github.com/rafael0rueda/tempera</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-09-17">
       <description>
         <p>New features:</p>
