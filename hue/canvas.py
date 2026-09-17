@@ -213,8 +213,7 @@ class Canvas(Gtk.DrawingArea):
         # Raw widget-space pointer position, for Ctrl+scroll to zoom around.
         self._last_pointer: tuple[float, float] = (0.0, 0.0)
 
-        # Anchored top-left like the image itself, so dragging a resize grip does
-        # not move the widget out from under the pointer.
+        # Anchored top-left like the image itself; CanvasFrame does the centering.
         self.set_halign(Gtk.Align.START)
         self.set_valign(Gtk.Align.START)
         self.set_draw_func(self._draw)
@@ -225,6 +224,8 @@ class Canvas(Gtk.DrawingArea):
         drag.connect("drag-begin", self._on_drag_begin)
         drag.connect("drag-update", self._on_drag_update)
         drag.connect("drag-end", self._on_drag_end)
+        # Lets CanvasFrame re-centre an image that a drag resized.
+        drag.connect_after("drag-end", lambda *_: self.queue_resize())
         self.add_controller(drag)
 
         motion = Gtk.EventControllerMotion()
@@ -363,6 +364,9 @@ class Canvas(Gtk.DrawingArea):
         # tick callback would nudge from the already-clamped position instead
         # of the one the pointer was actually anchored to.
         base_value = (horizontal.get_value(), vertical.get_value())
+        # Centring moves the canvas as it grows or shrinks, and the scroll has to
+        # absorb that too.
+        base_offset = self._frame_offset()
         stale_bounds = (horizontal.get_upper(), vertical.get_upper())
         attempts = 0
 
@@ -372,11 +376,20 @@ class Canvas(Gtk.DrawingArea):
             settled = (horizontal.get_upper(), vertical.get_upper()) != stale_bounds
             if not settled and attempts < 10:
                 return GLib.SOURCE_CONTINUE
-            horizontal.set_value(base_value[0] + image_x * (new_zoom - old_zoom))
-            vertical.set_value(base_value[1] + image_y * (new_zoom - old_zoom))
+            offset = self._frame_offset()
+            horizontal.set_value(
+                base_value[0] + offset[0] - base_offset[0] + image_x * (new_zoom - old_zoom)
+            )
+            vertical.set_value(
+                base_value[1] + offset[1] - base_offset[1] + image_y * (new_zoom - old_zoom)
+            )
             return GLib.SOURCE_REMOVE
 
         self.add_tick_callback(adjust)
+
+    def _frame_offset(self) -> tuple[int, int]:
+        parent = self.get_parent()
+        return parent.offset if isinstance(parent, CanvasFrame) else (0, 0)
 
     def zoom_in(self) -> None:
         bigger = [level for level in ZOOM_PRESETS if level > self.zoom + 1e-9]
@@ -1185,3 +1198,47 @@ class Canvas(Gtk.DrawingArea):
         cr.paint()
         cr.restore()
 
+
+
+class CanvasFrame(Gtk.Widget):
+    """Centres the canvas in whatever room the scrolled window gives it.
+
+    The offset is held while a button is down or a paste is floating: a resize
+    grip or an overhanging paste grows the canvas, and re-centring then would
+    slide the image out from under the pointer. It catches up once they end.
+    """
+
+    def __init__(self, canvas: Canvas):
+        super().__init__()
+        self.canvas = canvas
+        canvas.set_parent(self)
+        self.offset = (0, 0)
+        canvas.connect("floating-changed", lambda *_: self.queue_resize())
+
+    def _held(self) -> bool:
+        return self.canvas.is_dragging or self.canvas.has_floating
+
+    def do_dispose(self) -> None:
+        self.canvas.unparent()
+
+    def do_get_request_mode(self) -> Gtk.SizeRequestMode:
+        return Gtk.SizeRequestMode.CONSTANT_SIZE
+
+    def do_measure(self, orientation: Gtk.Orientation, for_size: int):
+        minimum, natural, _, _ = self.canvas.measure(orientation, -1)
+        if self._held():
+            # Room for the canvas to grow from where it is pinned, not from 0.
+            offset = self.offset[0 if orientation == Gtk.Orientation.HORIZONTAL else 1]
+            minimum, natural = minimum + offset, natural + offset
+        return minimum, natural, -1, -1
+
+    def do_size_allocate(self, width: int, height: int, baseline: int) -> None:
+        _, child_width, _, _ = self.canvas.measure(Gtk.Orientation.HORIZONTAL, -1)
+        _, child_height, _, _ = self.canvas.measure(Gtk.Orientation.VERTICAL, -1)
+        if not self._held():
+            self.offset = (max(0, (width - child_width) // 2), max(0, (height - child_height) // 2))
+        x, y = self.offset
+        allocation = Gdk.Rectangle()
+        allocation.x, allocation.y = x, y
+        allocation.width, allocation.height = child_width, child_height
+        self.canvas.size_allocate(allocation, -1)

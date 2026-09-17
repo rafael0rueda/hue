@@ -6,7 +6,7 @@ from __future__ import annotations
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 from . import APP_NAME
-from .canvas import Canvas
+from .canvas import Canvas, CanvasFrame
 from .clipboard import has_image, read_image, texture_from_surface
 from .color import ColorBar, ColorState
 from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_SIZE, Document, new_surface
@@ -215,7 +215,7 @@ class HueWindow(Adw.ApplicationWindow):
 
         scrolled = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
         scrolled.add_css_class("hue-canvas-area")
-        scrolled.set_child(self.canvas)
+        scrolled.set_child(CanvasFrame(self.canvas))
         content.append(scrolled)
 
         right_slot, right_strip = self._build_palette_strip(separator_first=True)
