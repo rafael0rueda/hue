@@ -1,10 +1,19 @@
-# Hue
+# Tempera
 
 A straightforward raster paint application for Fedora / GNOME, in the spirit of the
 classic Windows Paint. Built with GTK4 and libadwaita, it follows the system light/dark
 preference and accent colour automatically, and works entirely offline.
 
-![Hue's main window: the tool palette on the left, a blank 800 × 600 canvas in the middle, and the colour palette, pointer position, zoom level and canvas size along the bottom](data/screenshots/main-window.png)
+Tempera used to be called Hue. The first time it starts, it copies your settings,
+shortcuts and recent files over from `~/.config/hue/`. The Flatpak cannot see the old
+app's data, so copy it once by hand before starting Tempera:
+
+```
+mkdir -p ~/.var/app/io.github.rafael0rueda.Tempera/config
+cp -r ~/.var/app/io.github.rafael0rueda.Hue/config/hue ~/.var/app/io.github.rafael0rueda.Tempera/config/tempera
+```
+
+![Tempera's main window: the tool palette on the left, a blank 800 × 600 canvas in the middle, and the colour palette, pointer position, zoom level and canvas size along the bottom](data/screenshots/main-window.png)
 
 ## Requirements
 
@@ -21,10 +30,10 @@ To build and install, also: `sudo dnf install meson ninja-build`
 No build step is needed for development:
 
 ```
-python3 -m hue
+python3 -m tempera
 ```
 
-Optionally pass an image to open: `python3 -m hue picture.png`
+Optionally pass an image to open: `python3 -m tempera picture.png`
 
 ## Running the tests
 
@@ -45,24 +54,24 @@ meson setup builddir --prefix=/usr/local
 meson install -C builddir
 ```
 
-This installs the `hue` launcher, the desktop entry, the app icon and the app data
+This installs the `tempera` launcher, the desktop entry, the app icon and the app data
 (stylesheet plus tool icons). The launcher points at the installed data directory;
-`HUE_DATA_DIR` overrides it if you need to.
+`TEMPERA_DATA_DIR` overrides it if you need to.
 
 ## Flatpak
 
-`flatpak/io.github.rafael0rueda.Hue.json` builds against `org.gnome.Platform` 50. It needs
+`flatpak/io.github.rafael0rueda.Tempera.json` builds against `org.gnome.Platform` 50. It needs
 `flatpak-builder` and the GNOME SDK, which are not installed by default:
 
 ```bash
 sudo dnf install flatpak-builder
 flatpak install flathub org.gnome.Sdk//50 org.gnome.Platform//50
-flatpak-builder --user --install --force-clean build flatpak/io.github.rafael0rueda.Hue.json
+flatpak-builder --user --install --force-clean build flatpak/io.github.rafael0rueda.Tempera.json
 ```
 
 The manifest deliberately grants no network permission — the app has no reason to
 reach the network, and the sandbox enforces that. It grants no filesystem access
-either: Hue only sees the images you pick in the Open and Save dialogs, drop onto the
+either: Tempera only sees the images you pick in the Open and Save dialogs, drop onto the
 canvas or copy from Files, all of which reach it through the desktop's file portal.
 
 ## Tools and shortcuts
@@ -106,7 +115,7 @@ lists every shortcut: click one and press the new key, `Backspace` to remove it,
 to leave it as it was. A key another action already uses can be moved over after a
 confirmation. Crop, rotate and flip have no key by default but can be given one. Keys the
 canvas needs — arrows, `Enter`, `Esc`, `Delete`, `Tab` — are listed but cannot be
-reassigned. Changes are saved in `~/.config/hue/settings.ini`; only keys that differ
+reassigned. Changes are saved in `~/.config/tempera/settings.ini`; only keys that differ
 from the defaults are stored, and **Reset All Shortcuts** puts everything back.
 
 ## Opening and saving
@@ -117,7 +126,7 @@ Files** in the main menu lists the last eight images you opened or saved; one th
 no longer be opened is taken off the list when you pick it.
 
 Saving uses the format matching the file extension. A name typed without one gets
-`.png` added — Hue asks first if that would replace an existing file — and saving as
+`.png` added — Tempera asks first if that would replace an existing file — and saving as
 JPEG asks for a quality from 1 to 100, remembering your last choice while the window is
 open. The image is
 written in full before it replaces the old file, so a save that fails, on a full disk
@@ -143,7 +152,7 @@ also shows which image pixel the pointer is over.
 The colour palette sits in the bottom bar by default. **Palette Position** in the main
 menu moves it under the tools in the left sidebar, or to a column right of the canvas,
 which leaves more height for the image on wide screens. The choice is remembered in
-`~/.config/hue/settings.ini`.
+`~/.config/tempera/settings.ini`.
 
 ## Resizing the canvas
 
@@ -242,6 +251,6 @@ symbolic SVGs in `data/icons/`, so they recolour with the theme too.
 
 ## Licence
 
-Hue is free software under the GNU General Public License, version 3 or later; the
+Tempera is free software under the GNU General Public License, version 3 or later; the
 full text is in [LICENSE](LICENSE). Source and data files carry `SPDX-License-Identifier`
 headers. The AppStream metainfo file is CC0-1.0, as AppStream requires of metadata.

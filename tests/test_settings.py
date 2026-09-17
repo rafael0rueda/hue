@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Rafael Rueda
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from hue import settings
+from tempera import settings
 
 
 def use_tmp_settings_file(monkeypatch, tmp_path):
-    path = tmp_path / "hue" / "settings.ini"
+    path = tmp_path / "tempera" / "settings.ini"
     monkeypatch.setattr(settings, "_settings_path", lambda: path)
     return path
 
@@ -38,8 +38,41 @@ def test_damaged_settings_file_falls_back_to_the_default(monkeypatch, tmp_path):
 
 
 def test_unwritable_config_directory_is_not_an_error(monkeypatch, tmp_path):
-    blocker = tmp_path / "hue"
+    blocker = tmp_path / "tempera"
     blocker.write_text("a file where the directory should be", encoding="utf-8")
     use_tmp_settings_file(monkeypatch, tmp_path)
     settings.save_palette_position("left")
     assert settings.load_palette_position() == "bottom"
+
+
+def test_old_hue_settings_are_carried_over_once(tmp_path):
+    old = tmp_path / settings.OLD_CONFIG_NAME
+    old.mkdir()
+    (old / "settings.ini").write_text("[view]\npalette-position = left\n", encoding="utf-8")
+    (old / "recent-files.txt").write_text("file:///a.png\n", encoding="utf-8")
+
+    settings.migrate_old_config(tmp_path)
+
+    new = tmp_path / settings.CONFIG_NAME
+    assert (new / "settings.ini").read_text(encoding="utf-8").endswith("left\n")
+    assert (new / "recent-files.txt").read_text(encoding="utf-8") == "file:///a.png\n"
+    assert (old / "settings.ini").exists()
+    assert not (tmp_path / (settings.CONFIG_NAME + ".tmp")).exists()
+
+
+def test_migration_never_overwrites_tempera_settings(tmp_path):
+    old = tmp_path / settings.OLD_CONFIG_NAME
+    old.mkdir()
+    (old / "settings.ini").write_text("[view]\npalette-position = left\n", encoding="utf-8")
+    new = tmp_path / settings.CONFIG_NAME
+    new.mkdir()
+    (new / "settings.ini").write_text("[view]\npalette-position = right\n", encoding="utf-8")
+
+    settings.migrate_old_config(tmp_path)
+
+    assert (new / "settings.ini").read_text(encoding="utf-8").endswith("right\n")
+
+
+def test_migration_without_old_settings_creates_nothing(tmp_path):
+    settings.migrate_old_config(tmp_path)
+    assert list(tmp_path.iterdir()) == []

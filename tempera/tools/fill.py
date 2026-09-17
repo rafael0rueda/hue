@@ -111,7 +111,7 @@ def flood_fill(surface: cairo.ImageSurface, x: int, y: int, color: Gdk.RGBA,
 class FillTool(Tool):
     id = "fill"
     label = "Fill"
-    icon_name = "hue-fill-symbolic"
+    icon_name = "tempera-fill-symbolic"
 
     def press(self, ctx: ToolContext, x, y):
         flood_fill(ctx.surface, int(x), int(y), ctx.color)

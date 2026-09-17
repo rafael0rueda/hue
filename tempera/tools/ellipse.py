@@ -9,7 +9,7 @@ from .base import ShapeTool
 class EllipseTool(ShapeTool):
     id = "ellipse"
     label = "Ellipse"
-    icon_name = "hue-ellipse-symbolic"
+    icon_name = "tempera-ellipse-symbolic"
 
     def render(self, cr, ctx, start, end):
         x, y, width, height = self.rect(start, end)

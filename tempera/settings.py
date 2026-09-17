@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import configparser
 import os
+import shutil
 from pathlib import Path
 
 from gi.repository import GLib
@@ -15,12 +16,40 @@ from gi.repository import GLib
 PALETTE_POSITIONS = ("bottom", "left", "right")
 DEFAULT_PALETTE_POSITION = "bottom"
 
+CONFIG_NAME = "tempera"
+# Tempera was called Hue before, and kept its settings under that name.
+OLD_CONFIG_NAME = "hue"
+
 _SECTION = "view"
 _SHORTCUTS_SECTION = "shortcuts"
 
 
+def config_dir() -> Path:
+    return Path(GLib.get_user_config_dir()) / CONFIG_NAME
+
+
+def migrate_old_config(root: Path | None = None) -> None:
+    """Carry settings, shortcuts and recent files over from when the app was called Hue.
+
+    It only happens while there is no Tempera directory yet, so it runs once and
+    never overwrites anything; the old directory is left where it was.
+    """
+    root = Path(GLib.get_user_config_dir()) if root is None else root
+    old, new = root / OLD_CONFIG_NAME, root / CONFIG_NAME
+    if new.exists() or not old.is_dir():
+        return
+    temporary = root / (CONFIG_NAME + ".tmp")
+    try:
+        shutil.rmtree(temporary, ignore_errors=True)
+        shutil.copytree(old, temporary)
+        # Moved into place whole, so a failed copy is tried again next time.
+        os.replace(temporary, new)
+    except OSError:
+        shutil.rmtree(temporary, ignore_errors=True)
+
+
 def _settings_path() -> Path:
-    return Path(GLib.get_user_config_dir()) / "hue" / "settings.ini"
+    return config_dir() / "settings.ini"
 
 
 def _load() -> configparser.ConfigParser:

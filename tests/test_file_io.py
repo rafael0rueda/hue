@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
 
-from hue.document import MAX_SIZE, Document, new_surface
-from hue.file_io import (
+from tempera.document import MAX_SIZE, Document, new_surface
+from tempera.file_io import (
     ICO_MAX_SIZE,
     format_for,
     image_filters,

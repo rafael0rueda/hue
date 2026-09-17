@@ -6,8 +6,8 @@ import random
 import pytest
 from gi.repository import Gdk
 
-from hue.document import copy_surface, new_surface, same_pixels
-from hue.tools.fill import _premultiplied, flood_fill
+from tempera.document import copy_surface, new_surface, same_pixels
+from tempera.tools.fill import _premultiplied, flood_fill
 
 from pixels import paint_pixel, pixel_at
 

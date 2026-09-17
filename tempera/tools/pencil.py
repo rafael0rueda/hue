@@ -9,6 +9,6 @@ from .base import FreehandTool
 class PencilTool(FreehandTool):
     id = "pencil"
     label = "Pencil"
-    icon_name = "hue-pencil-symbolic"
+    icon_name = "tempera-pencil-symbolic"
     antialias = False
     line_cap = cairo.LINE_CAP_SQUARE

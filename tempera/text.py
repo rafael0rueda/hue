@@ -12,7 +12,7 @@ DEFAULT_FONT = "Sans 24"
 FONT_SIZE_RANGE = (6, 200)
 
 # The pixels that end up in the image must not depend on the desktop's text
-# scaling, so every layout Hue lays out comes from a font map pinned at the
+# scaling, so every layout Tempera lays out comes from a font map pinned at the
 # usual 96 dpi rather than from the screen's.
 _FONT_MAP = PangoCairo.FontMap.new()
 _FONT_MAP.set_resolution(96)

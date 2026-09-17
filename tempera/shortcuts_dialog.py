@@ -50,7 +50,7 @@ class ShortcutsDialog(Adw.PreferencesDialog):
         row.connect("activated", lambda *_: self._record(shortcut))
 
         reset = Gtk.Button(
-            icon_name="hue-undo-symbolic",
+            icon_name="tempera-undo-symbolic",
             tooltip_text="Reset to default",
             valign=Gtk.Align.CENTER,
         )

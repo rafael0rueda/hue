@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Rafael Rueda
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-project('hue',
+project('tempera',
   version: '0.3.0',
   meson_version: '>= 0.62.0',
 )
@@ -14,7 +14,7 @@ bindir = prefix / get_option('bindir')
 datadir = prefix / get_option('datadir')
 pkgdatadir = datadir / meson.project_name()
 
-subdir('hue')
+subdir('tempera')
 subdir('data')
 subdir('tests')
 

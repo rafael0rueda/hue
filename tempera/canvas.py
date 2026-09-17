@@ -218,7 +218,7 @@ class Canvas(Gtk.DrawingArea):
         self.set_valign(Gtk.Align.START)
         self.set_draw_func(self._draw)
         self.set_cursor(Gdk.Cursor.new_from_name("crosshair"))
-        self.add_css_class("hue-canvas")
+        self.add_css_class("tempera-canvas")
 
         drag = Gtk.GestureDrag(button=0)
         drag.connect("drag-begin", self._on_drag_begin)

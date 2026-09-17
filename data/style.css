@@ -1,30 +1,30 @@
 /* SPDX-FileCopyrightText: 2026 Rafael Rueda
    SPDX-License-Identifier: GPL-3.0-or-later */
 
-/* Hue only styles the few things libadwaita does not cover. Every colour below
+/* Tempera only styles the few things libadwaita does not cover. Every colour below
    comes from libadwaita's palette, so the app follows the system light/dark
    preference and accent colour automatically. Re-theming means editing this file. */
 
 /* The frame around the canvas: sidebars, palette strip and bottom bar share the
    header's colour so the chrome reads as one surface. */
-.hue-chrome {
+.tempera-chrome {
   background-color: @headerbar_bg_color;
 }
 
-.hue-chrome:backdrop {
+.tempera-chrome:backdrop {
   background-color: @headerbar_backdrop_color;
 }
 
-.hue-sidebar {
+.tempera-sidebar {
   padding: 12px;
 }
 
-.hue-tool {
+.tempera-tool {
   min-width: 40px;
   min-height: 40px;
 }
 
-.hue-tool:checked {
+.tempera-tool:checked {
   background-color: alpha(@accent_bg_color, 0.85);
   color: @accent_fg_color;
 }
@@ -32,7 +32,7 @@
 /* The canvas area is a card inset in the frame. The sidebar's padding spaces
    it on the left; its own margin does the right edge unless the palette strip
    is there. */
-.hue-canvas-area {
+.tempera-canvas-area {
   /* Shaded so the card stands apart from the frame in light mode too, where
      the header and view colours are both near white. */
   background-color: @view_bg_color;
@@ -42,16 +42,16 @@
   margin: 12px 12px 0 0;
 }
 
-.hue-canvas-area.hue-palette-beside {
+.tempera-canvas-area.tempera-palette-beside {
   margin-right: 0;
 }
 
-.hue-canvas {
+.tempera-canvas {
   /* The widget reserves a few pixels past the image for the resize grips, so
      the image itself draws its own outline instead of using a box-shadow. */
   margin: 24px;
 }
 
-.hue-swatch {
+.tempera-swatch {
   border-radius: 4px;
 }

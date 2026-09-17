@@ -18,7 +18,7 @@ python.install_sources(
     'text.py',
     'window.py',
   ),
-  subdir: 'hue',
+  subdir: 'tempera',
 )
 
 python.install_sources(
@@ -36,7 +36,7 @@ python.install_sources(
     'tools/select.py',
     'tools/text.py',
   ),
-  subdir: 'hue/tools',
+  subdir: 'tempera/tools',
 )
 
 launcher = configuration_data()
@@ -45,8 +45,8 @@ launcher.set('PYTHON_DIR', python.get_install_dir())
 launcher.set('PKGDATADIR', pkgdatadir)
 
 configure_file(
-  input: 'hue.in',
-  output: 'hue',
+  input: 'tempera.in',
+  output: 'tempera',
   configuration: launcher,
   install: true,
   install_dir: bindir,

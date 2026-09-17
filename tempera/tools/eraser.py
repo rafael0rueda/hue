@@ -9,7 +9,7 @@ from .base import FreehandTool, ToolContext
 class EraserTool(FreehandTool):
     id = "eraser"
     label = "Eraser"
-    icon_name = "hue-eraser-symbolic"
+    icon_name = "tempera-eraser-symbolic"
     antialias = False
     line_cap = cairo.LINE_CAP_SQUARE
 

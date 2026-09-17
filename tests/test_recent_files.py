@@ -3,7 +3,7 @@
 
 from gi.repository import Gio
 
-from hue import recent_files
+from tempera import recent_files
 
 
 def gio_file(path) -> Gio.File:
@@ -83,7 +83,7 @@ def test_load_recent_is_empty_when_the_file_is_not_text(monkeypatch, tmp_path):
 
 def test_remember_recent_does_not_raise_when_the_list_cannot_be_written(monkeypatch, tmp_path):
     # A plain file where the config folder should be: nothing can be created in it.
-    blocker = tmp_path / "hue"
+    blocker = tmp_path / "tempera"
     blocker.write_text("")
     monkeypatch.setattr(recent_files, "_recent_file_path", lambda: blocker / "recent-files.txt")
 

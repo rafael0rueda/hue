@@ -1,9 +1,9 @@
 {
-  "app-id": "io.github.rafael0rueda.Hue",
+  "app-id": "io.github.rafael0rueda.Tempera",
   "runtime": "org.gnome.Platform",
   "runtime-version": "50",
   "sdk": "org.gnome.Sdk",
-  "command": "hue",
+  "command": "tempera",
   "finish-args": [
     "--socket=wayland",
     "--socket=fallback-x11",
@@ -18,7 +18,7 @@
   ],
   "modules": [
     {
-      "name": "hue",
+      "name": "tempera",
       "buildsystem": "meson",
       "sources": [
         {

@@ -3,9 +3,9 @@
 
 from gi.repository import Gdk
 
-from hue.canvas import Canvas, FloatingPaste, Selection
-from hue.color import ColorState
-from hue.document import Document, new_surface
+from tempera.canvas import Canvas, FloatingPaste, Selection
+from tempera.color import ColorState
+from tempera.document import Document, new_surface
 
 from pixels import paint_pixel, pixel_at
 

@@ -3,7 +3,7 @@
 
 from gi.repository import Gdk
 
-from hue.color import ColorState, rgba
+from tempera.color import ColorState, rgba
 
 
 def test_defaults_are_black_on_white():

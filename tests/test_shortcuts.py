@@ -4,7 +4,7 @@
 import pytest
 from gi.repository import Adw, Gdk, Gio
 
-from hue import settings, shortcuts
+from tempera import settings, shortcuts
 
 SHIFT = Gdk.ModifierType.SHIFT_MASK
 CONTROL = Gdk.ModifierType.CONTROL_MASK
@@ -14,7 +14,7 @@ NONE = Gdk.ModifierType(0)
 @pytest.fixture(scope="module")
 def application():
     app = Adw.Application(
-        application_id="io.github.rafael0rueda.Hue.ShortcutTests",
+        application_id="io.github.rafael0rueda.Tempera.ShortcutTests",
         flags=Gio.ApplicationFlags.NON_UNIQUE,
     )
     app.register(None)
@@ -28,7 +28,7 @@ def settings_file(monkeypatch, tmp_path):
     return path
 
 
-def test_defaults_keep_the_keys_hue_has_always_had():
+def test_defaults_keep_the_keys_tempera_has_always_had():
     expected = {
         "win.new": ["<Control>n"],
         "win.open": ["<Control>o"],

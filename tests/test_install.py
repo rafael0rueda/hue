@@ -5,9 +5,11 @@
 install list only shows up as a crash in the installed app. Catch it here."""
 
 import re
+import subprocess
 from pathlib import Path
 
-PACKAGE = Path(__file__).resolve().parent.parent / "hue"
+ROOT = Path(__file__).resolve().parent.parent
+PACKAGE = ROOT / "tempera"
 
 
 def test_every_module_is_installed():
@@ -40,3 +42,30 @@ def test_every_icon_is_shipped_or_built_into_gtk():
 
     assert used, "the icon names were not found at all"
     assert used - shipped - built_in == set()
+
+
+def test_nothing_is_still_called_hue():
+    """The app was renamed from Hue; only the deliberate references to that remain."""
+    allowed = {
+        "tempera/settings.py": ['OLD_CONFIG_NAME = "hue"', "called Hue"],
+        "data/io.github.rafael0rueda.Tempera.metainfo.xml": ["io.github.rafael0rueda.Hue", "called Hue"],
+        "README.md": ["called Hue", "~/.config/hue/", "io.github.rafael0rueda.Hue/config/hue"],
+        "tests/test_install.py": None,
+        "tests/test_settings.py": ["old_hue_settings"],
+    }
+    tracked = subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.split()
+    leftovers = []
+    for name in tracked:
+        path = ROOT / name
+        if name == "LICENSE" or path.suffix in {".png", ".svg"} or not path.is_file():
+            continue
+        if allowed.get(name, []) is None:
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"hue", line, re.IGNORECASE) and not any(
+                fragment in line for fragment in allowed.get(name, [])
+            ):
+                leftovers.append(f"{name}:{number}: {line.strip()}")
+    assert leftovers == []

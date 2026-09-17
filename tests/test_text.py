@@ -3,7 +3,7 @@
 
 from gi.repository import Gdk
 
-from hue.text import TextBox, font_size, font_without_size, with_font_size
+from tempera.text import TextBox, font_size, font_without_size, with_font_size
 
 COLOR = Gdk.RGBA()
 COLOR.parse("#000000")

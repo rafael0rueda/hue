@@ -45,7 +45,7 @@ IMAGE_ACTIONS = {
 BRUSH_SIZE_RANGE = (1, 64)
 
 
-class HueWindow(Adw.ApplicationWindow):
+class TemperaWindow(Adw.ApplicationWindow):
     def __init__(self, application: Adw.Application, document: Document | None = None):
         super().__init__(application=application, title=APP_NAME)
         self.set_default_size(1120, 800)
@@ -81,7 +81,7 @@ class HueWindow(Adw.ApplicationWindow):
         # needed where they meet. The bottom bar is part of the content rather
         # than a toolbar-view bar, which would paint it a colour of its own.
         chrome = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        chrome.add_css_class("hue-chrome")
+        chrome.add_css_class("tempera-chrome")
         chrome.append(self._build_content())
         chrome.append(self._build_bottom_bar())
 
@@ -105,9 +105,9 @@ class HueWindow(Adw.ApplicationWindow):
         header.set_title_widget(self._title)
 
         for icon, action, tooltip in (
-            ("hue-new-symbolic", "win.new", "New image"),
+            ("tempera-new-symbolic", "win.new", "New image"),
             ("document-open-symbolic", "win.open", "Open image"),
-            ("hue-save-symbolic", "win.save", "Save"),
+            ("tempera-save-symbolic", "win.save", "Save"),
         ):
             button = Gtk.Button(icon_name=icon)
             self._add_shortcut_tooltip(button, tooltip, action)
@@ -117,8 +117,8 @@ class HueWindow(Adw.ApplicationWindow):
         history = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         history.add_css_class("linked")
         for icon, action, tooltip in (
-            ("hue-undo-symbolic", "win.undo", "Undo"),
-            ("hue-redo-symbolic", "win.redo", "Redo"),
+            ("tempera-undo-symbolic", "win.undo", "Undo"),
+            ("tempera-redo-symbolic", "win.redo", "Redo"),
         ):
             button = Gtk.Button(icon_name=icon)
             self._add_shortcut_tooltip(button, tooltip, action)
@@ -222,7 +222,7 @@ class HueWindow(Adw.ApplicationWindow):
         content.append(self._build_sidebar())
 
         self._canvas_card = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
-        self._canvas_card.add_css_class("hue-canvas-area")
+        self._canvas_card.add_css_class("tempera-canvas-area")
         self._canvas_card.set_child(CanvasFrame(self.canvas))
         content.append(self._canvas_card)
 
@@ -236,19 +236,19 @@ class HueWindow(Adw.ApplicationWindow):
     def _build_palette_strip(self) -> Gtk.Box:
         """A column right of the canvas for the palette, hidden while it is elsewhere."""
         strip = Gtk.Box(visible=False)
-        strip.add_css_class("hue-sidebar")
+        strip.add_css_class("tempera-sidebar")
         return strip
 
     def _build_sidebar(self) -> Gtk.Widget:
         sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        sidebar.add_css_class("hue-sidebar")
+        sidebar.add_css_class("tempera-sidebar")
         sidebar.set_size_request(128, -1)
 
         tools = Gtk.Grid(row_spacing=6, column_spacing=6, halign=Gtk.Align.CENTER)
         for index, tool in enumerate(TOOL_CLASSES):
             button = Gtk.ToggleButton(icon_name=tool.icon_name)
             self._add_shortcut_tooltip(button, tool.label, f"win.tool::{tool.id}")
-            button.add_css_class("hue-tool")
+            button.add_css_class("tempera-tool")
             button.set_action_name("win.tool")
             button.set_action_target_value(GLib.Variant.new_string(tool.id))
             tools.attach(button, index % 2, index // 2, 1, 1)
@@ -407,9 +407,9 @@ class HueWindow(Adw.ApplicationWindow):
         )
         # The strip's padding already spaces the card from the right edge.
         if position == "right":
-            self._canvas_card.add_css_class("hue-palette-beside")
+            self._canvas_card.add_css_class("tempera-palette-beside")
         else:
-            self._canvas_card.remove_css_class("hue-palette-beside")
+            self._canvas_card.remove_css_class("tempera-palette-beside")
         self._palette_position = position
 
     def _on_size_changed(self, scale: Gtk.Scale) -> None:

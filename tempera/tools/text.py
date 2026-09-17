@@ -7,7 +7,7 @@ from .base import Tool, ToolContext
 class TextTool(Tool):
     id = "text"
     label = "Text"
-    icon_name = "hue-text-symbolic"
+    icon_name = "tempera-text-symbolic"
     # Typing is what changes the image, and that happens long after the click,
     # so the canvas takes it from here and commits the text itself.
     mutates = False

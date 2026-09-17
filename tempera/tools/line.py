@@ -11,7 +11,7 @@ from .base import ShapeTool, set_source
 class LineTool(ShapeTool):
     id = "line"
     label = "Line"
-    icon_name = "hue-line-symbolic"
+    icon_name = "tempera-line-symbolic"
 
     def render(self, cr, ctx, start, end):
         cr.set_line_width(ctx.size)

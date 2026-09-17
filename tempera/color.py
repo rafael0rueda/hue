@@ -66,7 +66,7 @@ class Swatch(Gtk.DrawingArea):
         self.set_content_width(size)
         self.set_content_height(size)
         self.set_draw_func(self._draw)
-        self.add_css_class("hue-swatch")
+        self.add_css_class("tempera-swatch")
 
         click = Gtk.GestureClick(button=0)
         click.connect("pressed", self._on_pressed)
@@ -128,7 +128,7 @@ class ColorBar(Gtk.Box):
         current.append(self._secondary_swatch)
 
         # The window gives it a tooltip naming the current shortcut.
-        self.swap_button = Gtk.Button(icon_name="hue-swap-symbolic")
+        self.swap_button = Gtk.Button(icon_name="tempera-swap-symbolic")
         self.swap_button.add_css_class("flat")
         self.swap_button.set_halign(Gtk.Align.CENTER)
         self.swap_button.set_valign(Gtk.Align.CENTER)

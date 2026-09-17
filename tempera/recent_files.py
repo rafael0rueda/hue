@@ -9,13 +9,15 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from gi.repository import Gio, GLib
+from gi.repository import Gio
+
+from .settings import config_dir
 
 MAX_RECENT = 8
 
 
 def _recent_file_path() -> Path:
-    return Path(GLib.get_user_config_dir()) / "hue" / "recent-files.txt"
+    return config_dir() / "recent-files.txt"
 
 
 def load_recent() -> list[str]:

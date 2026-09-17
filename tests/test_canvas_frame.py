@@ -3,9 +3,9 @@
 
 from gi.repository import Gtk
 
-from hue.canvas import Canvas, CanvasFrame
-from hue.color import ColorState
-from hue.document import Document
+from tempera.canvas import Canvas, CanvasFrame
+from tempera.color import ColorState
+from tempera.document import Document
 
 
 def make_frame() -> CanvasFrame:

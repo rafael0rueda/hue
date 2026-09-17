@@ -9,7 +9,7 @@ from .base import Tool, ToolContext
 class PickerTool(Tool):
     id = "picker"
     label = "Color picker"
-    icon_name = "hue-picker-symbolic"
+    icon_name = "tempera-picker-symbolic"
     mutates = False
 
     def press(self, ctx: ToolContext, x, y):

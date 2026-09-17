@@ -13,7 +13,7 @@ from .file_io import check_image_size, load_surface
 
 NO_IMAGE = "No image in the clipboard"
 
-# Everything Hue knows how to turn into pixels, in the order it is worth trying.
+# Everything Tempera knows how to turn into pixels, in the order it is worth trying.
 IMAGE_TYPES = (Gdk.Texture, Gdk.FileList, Gio.File)
 
 

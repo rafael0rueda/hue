@@ -3,9 +3,9 @@
 
 import cairo
 
-from hue.canvas import ZOOM_MAX, ZOOM_MIN, ZOOM_PRESETS, Canvas
-from hue.color import ColorState
-from hue.document import Document, new_surface
+from tempera.canvas import ZOOM_MAX, ZOOM_MIN, ZOOM_PRESETS, Canvas
+from tempera.color import ColorState
+from tempera.document import Document, new_surface
 
 from pixels import paint_pixel, pixel_at
 

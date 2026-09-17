@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Rafael Rueda
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from hue import document as document_module
-from hue.document import (
+from tempera import document as document_module
+from tempera.document import (
     MAX_UNDO,
     Document,
     copy_surface,

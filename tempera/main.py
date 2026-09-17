@@ -18,25 +18,27 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 from . import APP_ID, APP_NAME, VERSION  # noqa: E402
 from .file_io import load_document  # noqa: E402
 from .recent_files import remember_recent  # noqa: E402
-from .window import HueWindow  # noqa: E402
+from .settings import migrate_old_config  # noqa: E402
+from .window import TemperaWindow  # noqa: E402
 
 
 def data_dir() -> Path | None:
     """Find the app's data directory, whether running from source or installed."""
     candidates = []
-    if "HUE_DATA_DIR" in os.environ:
-        candidates.append(Path(os.environ["HUE_DATA_DIR"]))
+    if "TEMPERA_DATA_DIR" in os.environ:
+        candidates.append(Path(os.environ["TEMPERA_DATA_DIR"]))
     candidates.append(Path(__file__).resolve().parent.parent / "data")
-    candidates += [Path(d) / "hue" for d in GLib.get_system_data_dirs()]
+    candidates += [Path(d) / "tempera" for d in GLib.get_system_data_dirs()]
     return next((path for path in candidates if path.is_dir()), None)
 
 
-class HueApplication(Adw.Application):
+class TemperaApplication(Adw.Application):
     def __init__(self):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_OPEN)
 
     def do_startup(self):
         Adw.Application.do_startup(self)
+        migrate_old_config()
         self._load_resources()
 
         for name, callback in (("quit", self._on_quit), ("about", self._on_about)):
@@ -45,7 +47,7 @@ class HueApplication(Adw.Application):
             self.add_action(action)
 
     def do_activate(self):
-        window = self.props.active_window or HueWindow(self)
+        window = self.props.active_window or TemperaWindow(self)
         window.present()
 
     def do_open(self, files, n_files, hint):
@@ -57,10 +59,10 @@ class HueApplication(Adw.Application):
             document = None
         else:
             remember_recent(files[0])
-        window = HueWindow(self, document)
+        window = TemperaWindow(self, document)
         window.present()
         if error_message is not None:
-            print(f"hue: could not open image: {error_message}", file=sys.stderr)
+            print(f"tempera: could not open image: {error_message}", file=sys.stderr)
             window.show_toast(f"Could not open image: {error_message}")
 
     def _load_resources(self) -> None:
@@ -96,7 +98,7 @@ class HueApplication(Adw.Application):
             application_name=APP_NAME,
             application_icon=APP_ID,
             version=VERSION,
-            developer_name="Hue contributors",
+            developer_name="Tempera contributors",
             comments="A simple, offline raster paint app for the GNOME desktop.",
             license_type=Gtk.License.GPL_3_0,
         )
@@ -104,7 +106,7 @@ class HueApplication(Adw.Application):
 
 
 def main() -> int:
-    return HueApplication().run(sys.argv)
+    return TemperaApplication().run(sys.argv)
 
 
 if __name__ == "__main__":

@@ -68,7 +68,7 @@ def load_surface(file: Gio.File) -> cairo.ImageSurface:
     as the loader has read the header rather than after decoding gigabytes.
     """
     if file.get_path() is None:
-        # Hue stays offline, so a web or network address is never fetched.
+        # Tempera stays offline, so a web or network address is never fetched.
         raise image_error(f"“{file.get_basename()}” is not a file on this computer")
 
     declared = (0, 0)
@@ -118,7 +118,7 @@ def with_default_extension(file: Gio.File) -> Gio.File:
     """The file to save to, with .png added when the name has no extension at all.
 
     Without one the image would still be written as PNG, but under a name that
-    neither the file manager nor Hue's own Open dialog recognises as an image.
+    neither the file manager nor Tempera's own Open dialog recognises as an image.
     """
     name = file.get_basename()
     if os.path.splitext(name)[1]:

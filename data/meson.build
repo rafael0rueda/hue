@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Rafael Rueda
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-app_id = 'io.github.rafael0rueda.Hue'
+app_id = 'io.github.rafael0rueda.Tempera'
 
 install_data(app_id + '.desktop', install_dir: datadir / 'applications')
 install_data(app_id + '.metainfo.xml', install_dir: datadir / 'metainfo')

@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Rafael Rueda
 # SPDX-License-Identifier: GPL-3.0-or-later
 [Desktop Entry]
-Name=Hue
+Name=Tempera
 GenericName=Paint
 Comment=Draw and edit raster images
-Exec=hue %f
-Icon=io.github.rafael0rueda.Hue
+Exec=tempera %f
+Icon=io.github.rafael0rueda.Tempera
 Terminal=false
 Type=Application
 Categories=Graphics;2DGraphics;RasterGraphics;GTK;

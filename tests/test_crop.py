@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Rafael Rueda
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from hue.canvas import Canvas, Selection
-from hue.color import ColorState
-from hue.document import Document, new_surface
+from tempera.canvas import Canvas, Selection
+from tempera.color import ColorState
+from tempera.document import Document, new_surface
 
 from pixels import paint_pixel, pixel_at
 

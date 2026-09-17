@@ -33,7 +33,7 @@ def new_surface(width: int, height: int, fill=(1.0, 1.0, 1.0, 1.0)) -> cairo.Ima
 
 
 def surface_from_pixbuf(pixbuf: GdkPixbuf.Pixbuf) -> cairo.ImageSurface:
-    """Copy a pixbuf into a surface Hue can draw on."""
+    """Copy a pixbuf into a surface Tempera can draw on."""
     surface = new_surface(pixbuf.get_width(), pixbuf.get_height(), (0, 0, 0, 0))
     cr = cairo.Context(surface)
     Gdk.cairo_set_source_pixbuf(cr, pixbuf, 0, 0)

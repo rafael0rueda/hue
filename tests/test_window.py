@@ -4,8 +4,8 @@
 import pytest
 from gi.repository import Adw, Gio, GLib, Gtk
 
-from hue import recent_files, settings
-from hue.window import HueWindow
+from tempera import recent_files, settings
+from tempera.window import TemperaWindow
 
 from pixels import paint_pixel, pixel_at
 
@@ -15,7 +15,7 @@ RED = (1.0, 0.0, 0.0, 1.0)
 @pytest.fixture(scope="module")
 def application():
     app = Adw.Application(
-        application_id="io.github.rafael0rueda.Hue.Tests",
+        application_id="io.github.rafael0rueda.Tempera.Tests",
         flags=Gio.ApplicationFlags.NON_UNIQUE,
     )
     # Windows can only be added once the application has started up.
@@ -27,7 +27,7 @@ def application():
 def window(application, monkeypatch, tmp_path):
     monkeypatch.setattr(recent_files, "_recent_file_path", lambda: tmp_path / "recent-files.txt")
     monkeypatch.setattr(settings, "_settings_path", lambda: tmp_path / "settings.ini")
-    window = HueWindow(application)
+    window = TemperaWindow(application)
     yield window
     window.destroy()
 
@@ -110,7 +110,7 @@ def test_unknown_palette_position_is_ignored(window):
 def test_palette_position_is_remembered(application, window):
     window.activate_action("win.palette-position", GLib.Variant.new_string("right"))
 
-    reopened = HueWindow(application)
+    reopened = TemperaWindow(application)
     try:
         assert palette_position(reopened) == "right"
         slot, _strip = reopened._palette_slots["right"]
@@ -120,7 +120,7 @@ def test_palette_position_is_remembered(application, window):
 
 
 def test_tooltips_follow_changed_shortcuts(application, window):
-    from hue import shortcuts
+    from tempera import shortcuts
 
     swap = window._color_bar.swap_button
     assert swap.get_tooltip_text() == "Swap colors (X)"
@@ -136,7 +136,7 @@ def test_tooltips_follow_changed_shortcuts(application, window):
 
 
 def test_bare_keys_pause_while_typing_including_new_ones(application, window):
-    from hue import shortcuts
+    from tempera import shortcuts
 
     shortcuts.assign(application, "win.crop", "c")
     window.canvas.begin_text(10, 10, window.colors.primary)
@@ -152,8 +152,8 @@ def test_bare_keys_pause_while_typing_including_new_ones(application, window):
 
 
 def test_shortcuts_dialog_lists_every_shortcut(application, window):
-    from hue import shortcuts
-    from hue.shortcuts_dialog import ShortcutsDialog
+    from tempera import shortcuts
+    from tempera.shortcuts_dialog import ShortcutsDialog
 
     shortcuts.assign(application, "win.crop", "<Control>k")
     dialog = ShortcutsDialog(application)

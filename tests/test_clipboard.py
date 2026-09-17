@@ -4,14 +4,14 @@
 import pytest
 from gi.repository import Gdk, GLib, GObject
 
-from hue.clipboard import (
+from tempera.clipboard import (
     NO_IMAGE,
     has_image,
     read_image,
     surface_from_texture,
     texture_from_surface,
 )
-from hue.document import MAX_SIZE, new_surface
+from tempera.document import MAX_SIZE, new_surface
 
 from pixels import paint_pixel, pixel_at
 

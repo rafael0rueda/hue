@@ -3,8 +3,8 @@
 
 import math
 
-from hue.tools.line import LineTool
-from hue.tools.rectangle import RectangleTool
+from tempera.tools.line import LineTool
+from tempera.tools.rectangle import RectangleTool
 
 
 # ShapeTool._constrain (square), exercised through RectangleTool
