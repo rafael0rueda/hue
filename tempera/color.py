@@ -18,6 +18,9 @@ PALETTE = [
 ]
 
 
+MAX_RECENT_COLORS = 10
+
+
 def rgba(spec: str) -> Gdk.RGBA:
     color = Gdk.RGBA()
     color.parse(spec)
@@ -33,6 +36,9 @@ class ColorState(GObject.Object):
         super().__init__()
         self._primary = rgba("#000000")
         self._secondary = rgba("#ffffff")
+        # Colors picked lately, newest first, so a mixed color is a click away
+        # the next time it is wanted.
+        self.recent: list[Gdk.RGBA] = []
 
     @property
     def primary(self) -> Gdk.RGBA:
@@ -41,6 +47,7 @@ class ColorState(GObject.Object):
     @primary.setter
     def primary(self, value: Gdk.RGBA) -> None:
         self._primary = value
+        self._remember(value)
         self.emit("changed")
 
     @property
@@ -50,7 +57,12 @@ class ColorState(GObject.Object):
     @secondary.setter
     def secondary(self, value: Gdk.RGBA) -> None:
         self._secondary = value
+        self._remember(value)
         self.emit("changed")
+
+    def _remember(self, color: Gdk.RGBA) -> None:
+        kept = [existing for existing in self.recent if not existing.equal(color)]
+        self.recent = [color] + kept[: MAX_RECENT_COLORS - 1]
 
     def for_button(self, button: int) -> Gdk.RGBA:
         return self._secondary if button == Gdk.BUTTON_SECONDARY else self._primary
@@ -171,6 +183,11 @@ class ColorBar(Gtk.Box):
             self._palette_swatches.append(swatch)
         self.append(self._grid)
 
+        # Shown once something has been picked, and only then.
+        self._recent_grid = Gtk.Grid(row_spacing=4, column_spacing=4, visible=False)
+        self._recent_swatches: list[Swatch] = []
+        self.append(self._recent_grid)
+
         self.set_layout(PaletteLayout.WIDE)
         colors.connect("changed", self._sync)
         self._sync()
@@ -193,12 +210,43 @@ class ColorBar(Gtk.Box):
         self._grid.set_halign(Gtk.Align.FILL if wide else Gtk.Align.CENTER)
         self._grid.set_valign(Gtk.Align.CENTER if wide else Gtk.Align.START)
 
-        columns = {PaletteLayout.WIDE: 10, PaletteLayout.NARROW: 2, PaletteLayout.BLOCK: 5}[layout]
+        self._recent_grid.set_halign(self._grid.get_halign())
+        self._recent_grid.set_valign(self._grid.get_valign())
+
+        self._columns = {
+            PaletteLayout.WIDE: 10, PaletteLayout.NARROW: 2, PaletteLayout.BLOCK: 5
+        }[layout]
         for swatch in self._palette_swatches:
             if swatch.get_parent() is not None:
                 self._grid.remove(swatch)
         for index, swatch in enumerate(self._palette_swatches):
-            self._grid.attach(swatch, index % columns, index // columns, 1, 1)
+            self._grid.attach(swatch, index % self._columns, index // self._columns, 1, 1)
+        self._refresh_recent()
+
+    def refresh(self) -> None:
+        """Take the colours afresh, after they have been restored from settings."""
+        self._sync()
+
+    def _refresh_recent(self) -> None:
+        """Lay the recently picked colors out below the fixed palette."""
+        recent = self.colors.recent
+        self._recent_grid.set_visible(bool(recent))
+        while len(self._recent_swatches) < len(recent):
+            swatch = Swatch(recent[0])
+            swatch.connect("picked", self._on_palette_picked)
+            self._recent_swatches.append(swatch)
+        for index, swatch in enumerate(self._recent_swatches):
+            if swatch.get_parent() is not None:
+                self._recent_grid.remove(swatch)
+            if index >= len(recent):
+                continue
+            swatch.color = recent[index]
+            swatch.set_label_text(
+                _("Recent colour, {color}").format(color=describe(recent[index]))
+            )
+            self._recent_grid.attach(
+                swatch, index % self._columns, index // self._columns, 1, 1
+            )
 
     def _on_palette_picked(self, swatch: Swatch, button: int) -> None:
         if button == Gdk.BUTTON_SECONDARY:
@@ -215,9 +263,12 @@ class ColorBar(Gtk.Box):
         self._secondary_swatch.set_label_text(
             _("Secondary color, {color}").format(color=describe(self.colors.secondary))
         )
+        self._refresh_recent()
 
     def _choose(self, primary: bool) -> None:
-        dialog = Gtk.ColorDialog(with_alpha=False, title=_("Choose a color"))
+        # With alpha, so a colour can be made see-through; the dialog's own
+        # custom section is where a hex value can be typed in.
+        dialog = Gtk.ColorDialog(with_alpha=True, title=_("Choose a color"))
         initial = self.colors.primary if primary else self.colors.secondary
 
         def on_done(source, result):

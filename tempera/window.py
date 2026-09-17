@@ -8,7 +8,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 from . import APP_NAME, shortcuts
 from .canvas import Canvas, CanvasFrame
 from .clipboard import has_image, read_image, texture_from_surface
-from .color import ColorBar, ColorState, PaletteLayout
+from .color import MAX_RECENT_COLORS, ColorBar, ColorState, PaletteLayout, rgba
 from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_SIZE, Document, new_surface
 from .i18n import _
 from .file_io import (
@@ -20,7 +20,13 @@ from .file_io import (
     with_default_extension,
 )
 from .recent_files import clear_recent, forget_recent, load_recent, remember_recent
-from .settings import PALETTE_POSITIONS, load_palette_position, save_palette_position
+from .settings import (
+    PALETTE_POSITIONS,
+    load_palette_position,
+    load_setting,
+    save_palette_position,
+    save_settings,
+)
 from .shortcuts_dialog import ShortcutsDialog
 from .text import FONT_SIZE_RANGE, font_size, font_without_size, with_font_size
 from .tools import TOOL_CLASSES
@@ -46,6 +52,21 @@ IMAGE_ACTIONS = {
 
 # The one size slider serves the brush and, with the text tool up, the font.
 BRUSH_SIZE_RANGE = (1, 64)
+# 0 fills only the exact colour clicked; the top end spreads across most shades.
+TOLERANCE_RANGE = (0, 128)
+WHITE = (1.0, 1.0, 1.0, 1.0)
+TRANSPARENT = (0.0, 0.0, 0.0, 0.0)
+
+
+def _whole(text: str, fallback: int, limits: tuple[int, int] | None = None) -> int:
+    """A remembered number, ignoring anything a damaged settings file may hold."""
+    try:
+        value = int(text)
+    except ValueError:
+        return fallback
+    if limits is not None:
+        value = max(limits[0], min(value, limits[1]))
+    return value
 
 
 def scaled_side(original: int, percent: float) -> int:
@@ -56,15 +77,16 @@ def scaled_side(original: int, percent: float) -> int:
 class TemperaWindow(Adw.ApplicationWindow):
     def __init__(self, application: Adw.Application, document: Document | None = None):
         super().__init__(application=application, title=APP_NAME)
-        self.set_default_size(1120, 800)
         self.set_size_request(640, 480)
 
         self.colors = ColorState()
+        self._restore_window_size()
         self.canvas = Canvas(document or Document(), self.colors)
         self.canvas.connect("color-picked", self._on_color_picked)
         self.canvas.connect("resize-preview", self._on_resize_preview)
         self.canvas.connect("floating-changed", self._on_floating_changed)
         self.canvas.connect("selection-changed", lambda *_args: self._sync_selection_actions())
+        self.canvas.connect("selection-changed", lambda *_args: self._show_selection_size())
         self.canvas.connect("zoom-changed", self._on_zoom_changed)
         self.canvas.connect("pointer-moved", self._on_pointer_moved)
         self.canvas.connect("pointer-left", lambda *_args: self._cursor_label.set_label(""))
@@ -102,7 +124,9 @@ class TemperaWindow(Adw.ApplicationWindow):
         self.toasts.set_child(toolbars)
         self.set_content(self.toasts)
 
+        self._sync_tool_options()
         self._install_actions()
+        self._restore_preferences()
         self._watch_document()
         self._refresh_recent_menu()
         self.connect("close-request", self._on_close_request)
@@ -194,6 +218,12 @@ class TemperaWindow(Adw.ApplicationWindow):
         bar.append(bottom_slot)
 
         # Expands so the status items stay on the right wherever the palette is.
+        # How big the selection is, beside the pointer position.
+        self._selection_label = Gtk.Label()
+        self._selection_label.add_css_class("numeric")
+        self._selection_label.add_css_class("dim-label")
+        bar.append(self._selection_label)
+
         self._cursor_label = Gtk.Label(hexpand=True, xalign=1)
         self._cursor_label.add_css_class("numeric")
         self._cursor_label.add_css_class("dim-label")
@@ -288,10 +318,34 @@ class TemperaWindow(Adw.ApplicationWindow):
         sidebar.append(self._size_scale)
         self._sync_size_scale()
 
+        # Each tool's own options, shown only while that tool is in hand.
         self._fill_check = Gtk.CheckButton(label=_("Fill shape"))
-        self._fill_check.set_sensitive(False)
         self._fill_check.connect("toggled", self._on_fill_toggled)
         sidebar.append(self._fill_check)
+
+        self._erase_check = Gtk.CheckButton(label=_("Erase to transparency"))
+        self._erase_check.set_tooltip_text(
+            _("Rub back to nothing instead of the secondary colour")
+        )
+        self._erase_check.connect(
+            "toggled", lambda check: setattr(self.canvas, "erase_to_transparency", check.get_active())
+        )
+        sidebar.append(self._erase_check)
+
+        self._tolerance_label = Gtk.Label(xalign=0)
+        self._tolerance_label.add_css_class("caption")
+        sidebar.append(self._tolerance_label)
+        self._tolerance_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, *TOLERANCE_RANGE, 1
+        )
+        self._tolerance_scale.set_value(self.canvas.fill_tolerance)
+        self._tolerance_scale.set_draw_value(False)
+        self._tolerance_scale.set_tooltip_text(
+            _("How far a fill spreads into colours near the one you clicked")
+        )
+        self._tolerance_scale.connect("value-changed", self._on_tolerance_changed)
+        sidebar.append(self._tolerance_scale)
+        self._show_tolerance(self.canvas.fill_tolerance)
 
         # A caption of our own rather than a GtkFontDialogButton, whose label
         # grows the sidebar to fit whatever font name it is showing. It leaves
@@ -307,7 +361,6 @@ class TemperaWindow(Adw.ApplicationWindow):
         self._font_button.update_property(
             [Gtk.AccessibleProperty.DESCRIPTION], [_("Typeface for the text tool")]
         )
-        self._font_button.set_sensitive(False)
         self._font_button.connect("clicked", self._choose_font)
         sidebar.append(self._font_button)
 
@@ -344,6 +397,8 @@ class TemperaWindow(Adw.ApplicationWindow):
             "copy": lambda *_args: self._copy(),
             "paste": lambda *_args: self._paste(),
             "swap-colors": lambda *_args: self.colors.swap(),
+            "size-up": lambda *_args: self._step_size(1),
+            "size-down": lambda *_args: self._step_size(-1),
             "shortcuts": lambda *_args: ShortcutsDialog(self.get_application()).present(self),
             "clear-recent": lambda *_args: self._clear_recent(),
             "resize": lambda *_args: self._prompt_canvas_size(),
@@ -409,8 +464,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         self.canvas.commit_floating()
         action.set_state(value)
         self.canvas.select_tool(value.get_string())
-        self._fill_check.set_sensitive(self.canvas.supports_fill)
-        self._font_button.set_sensitive(self.canvas.supports_font)
+        self._sync_tool_options()
         self._sync_size_scale()
 
     def _on_palette_position_changed(self, action, value: GLib.Variant) -> None:
@@ -444,6 +498,10 @@ class TemperaWindow(Adw.ApplicationWindow):
             self._canvas_card.remove_css_class("tempera-palette-beside")
         self._palette_position = position
 
+    def _step_size(self, step: int) -> None:
+        """[ and ]: a bigger or smaller brush, or bigger or smaller text."""
+        self._size_scale.set_value(self._size_scale.get_value() + step)
+
     def _on_size_changed(self, scale: Gtk.Scale) -> None:
         if self._syncing_size:
             return
@@ -472,6 +530,22 @@ class TemperaWindow(Adw.ApplicationWindow):
 
     def _on_fill_toggled(self, check: Gtk.CheckButton) -> None:
         self.canvas.fill_shapes = check.get_active()
+
+    def _on_tolerance_changed(self, scale: Gtk.Scale) -> None:
+        self.canvas.fill_tolerance = int(scale.get_value())
+        self._show_tolerance(self.canvas.fill_tolerance)
+
+    def _show_tolerance(self, tolerance: int) -> None:
+        self._tolerance_label.set_label(_("Tolerance: {value}").format(value=tolerance))
+
+    def _sync_tool_options(self) -> None:
+        """Show the options belonging to the tool in hand, and hide the rest."""
+        self._fill_check.set_visible(self.canvas.supports_fill)
+        self._erase_check.set_visible(self.canvas.supports_erase_mode)
+        self._tolerance_label.set_visible(self.canvas.supports_tolerance)
+        self._tolerance_scale.set_visible(self.canvas.supports_tolerance)
+        self._font_label.set_visible(self.canvas.supports_font)
+        self._font_button.set_visible(self.canvas.supports_font)
 
     def _choose_font(self, *_args) -> None:
         dialog = Gtk.FontDialog(title=_("Text font"))
@@ -575,6 +649,14 @@ class TemperaWindow(Adw.ApplicationWindow):
     def _sync_paste_action(self) -> None:
         self.lookup_action("paste").set_enabled(has_image(self.get_clipboard()))
 
+    def _show_selection_size(self) -> None:
+        size = self.canvas.selection_size
+        self._selection_label.set_label(
+            "" if size is None else _("Selection {width} × {height}").format(
+                width=size[0], height=size[1]
+            )
+        )
+
     def _sync_selection_actions(self) -> None:
         # There is nothing to cut or crop to without a selection.
         self.lookup_action("cut").set_enabled(self.canvas.has_selection)
@@ -650,7 +732,9 @@ class TemperaWindow(Adw.ApplicationWindow):
     def _action_new(self, *_args) -> None:
         self._confirm_discard(self._prompt_new_size)
 
-    def _prompt_size(self, heading, body, size, accept_id, accept_label, on_accept) -> None:
+    def _prompt_size(
+        self, heading, body, size, accept_id, accept_label, on_accept, extra=None
+    ) -> None:
         """Ask for a width/height pair, then hand it to on_accept."""
         spins = []
         for value in size:
@@ -666,6 +750,8 @@ class TemperaWindow(Adw.ApplicationWindow):
         grid.attach(width_spin, 1, 0, 1, 1)
         grid.attach(Gtk.Label(label=_("Height"), xalign=1), 0, 1, 1, 1)
         grid.attach(height_spin, 1, 1, 1, 1)
+        if extra is not None:
+            grid.attach(extra, 0, 2, 2, 1)
 
         dialog = Adw.AlertDialog(heading=heading, body=body)
         dialog.set_extra_child(grid)
@@ -683,8 +769,12 @@ class TemperaWindow(Adw.ApplicationWindow):
         dialog.present(self)
 
     def _prompt_new_size(self) -> None:
+        transparent = Gtk.CheckButton(label=_("Transparent background"))
+        transparent.set_tooltip_text(_("Start with nothing rather than white"))
+
         def create(width: int, height: int) -> None:
-            self._set_document(Document(new_surface(width, height)))
+            fill = TRANSPARENT if transparent.get_active() else WHITE
+            self._set_document(Document(new_surface(width, height, fill)))
 
         self._prompt_size(
             _("New image"),
@@ -693,6 +783,7 @@ class TemperaWindow(Adw.ApplicationWindow):
             "create",
             _("Create"),
             create,
+            extra=transparent,
         )
 
     def _prompt_canvas_size(self) -> None:
@@ -982,9 +1073,64 @@ class TemperaWindow(Adw.ApplicationWindow):
         arguments = {} if quality is None else {"quality": quality}
         save_document_async(self.canvas.document, file, on_saved, on_error, **arguments)
 
+    # Preferences that outlive the window
+
+    def _restore_window_size(self) -> None:
+        width = _whole(load_setting("window-width"), 1120)
+        height = _whole(load_setting("window-height"), 800)
+        self.set_default_size(width, height)
+        if load_setting("window-maximized") == "1":
+            self.maximize()
+
+    def _restore_preferences(self) -> None:
+        """Put back the tool, sizes, font and colours from the last time."""
+        tool = load_setting("tool")
+        if any(tool == candidate.id for candidate in TOOL_CLASSES):
+            self.lookup_action("tool").change_state(GLib.Variant.new_string(tool))
+        self.canvas.brush_size = _whole(
+            load_setting("brush-size"), self.canvas.brush_size, BRUSH_SIZE_RANGE
+        )
+        font = load_setting("font")
+        if font:
+            self.canvas.set_font(font)
+            self._font_label.set_label(font_without_size(font))
+        self.canvas.fill_tolerance = _whole(
+            load_setting("fill-tolerance"), self.canvas.fill_tolerance, TOLERANCE_RANGE
+        )
+        self._tolerance_scale.set_value(self.canvas.fill_tolerance)
+        self._last_jpeg_quality = _whole(load_setting("jpeg-quality"), 90, (1, 100))
+        for key, attribute in (("primary-color", "primary"), ("secondary-color", "secondary")):
+            spec = load_setting(key)
+            color = Gdk.RGBA()
+            if spec and color.parse(spec):
+                setattr(self.colors, attribute, color)
+        recent = [rgba(spec) for spec in load_setting("recent-colors").split()]
+        self.colors.recent = [color for color in recent if color is not None][:MAX_RECENT_COLORS]
+        self._color_bar.refresh()
+        self._sync_size_scale()
+
+    def _save_preferences(self) -> None:
+        width, height = self.get_default_size()
+        save_settings(
+            {
+                "window-width": width,
+                "window-height": height,
+                "window-maximized": "1" if self.is_maximized() else "0",
+                "tool": self.canvas.active_tool.id,
+                "brush-size": self.canvas.brush_size,
+                "font": self.canvas.font,
+                "fill-tolerance": self.canvas.fill_tolerance,
+                "jpeg-quality": self._last_jpeg_quality,
+                "primary-color": self.colors.primary.to_string(),
+                "secondary-color": self.colors.secondary.to_string(),
+                "recent-colors": " ".join(color.to_string() for color in self.colors.recent),
+            }
+        )
+
     def _on_close_request(self, *_args) -> bool:
         if self._closing:
             return False
+        self._save_preferences()
 
         # With nothing to ask about, let this close go ahead. Calling close()
         # from inside the handler instead does nothing, since GTK ignores a

@@ -2,9 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import cairo
+from gi.repository import Gdk
 
 from ..i18n import _
 from .base import FreehandTool, ToolContext
+
+
+TRANSPARENT = Gdk.RGBA()
+TRANSPARENT.parse("rgba(0,0,0,0)")
 
 
 class EraserTool(FreehandTool):
@@ -15,5 +20,6 @@ class EraserTool(FreehandTool):
     line_cap = cairo.LINE_CAP_SQUARE
 
     def stroke_color(self, ctx: ToolContext):
-        # Like Paint, the eraser lays down the background (secondary) color.
-        return ctx.secondary
+        # Like Paint, the eraser lays down the background (secondary) color,
+        # unless it has been asked to rub back to nothing at all.
+        return TRANSPARENT if ctx.erase_to_transparency else ctx.secondary

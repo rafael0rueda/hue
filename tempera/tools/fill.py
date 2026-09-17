@@ -115,4 +115,4 @@ class FillTool(Tool):
     icon_name = "tempera-fill-symbolic"
 
     def press(self, ctx: ToolContext, x, y):
-        flood_fill(ctx.surface, int(x), int(y), ctx.color)
+        flood_fill(ctx.surface, int(x), int(y), ctx.color, ctx.tolerance)

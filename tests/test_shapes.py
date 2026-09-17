@@ -3,8 +3,39 @@
 
 import math
 
+from gi.repository import Gdk
+
+from tempera.document import new_surface
+from tempera.tools.base import ToolContext
+from tempera.tools.brush import BrushTool
+from tempera.tools.eraser import EraserTool
 from tempera.tools.line import LineTool
 from tempera.tools.rectangle import RectangleTool
+
+from pixels import pixel_at
+
+RED = (1.0, 0.0, 0.0, 1.0)
+
+
+def rgba(spec: str) -> Gdk.RGBA:
+    color = Gdk.RGBA()
+    color.parse(spec)
+    return color
+
+
+def context(surface, button: int, primary: Gdk.RGBA | None = None, size: int = 1) -> ToolContext:
+    """A tool context with nothing but the pixels and the colours filled in."""
+    return ToolContext(
+        surface=surface,
+        primary=primary or rgba("#000000"),
+        secondary=rgba("#ffffff"),
+        button=button,
+        size=size,
+        fill_shapes=False,
+        pick_color=lambda color, btn: None,
+        begin_text=lambda x, y, color: None,
+        select_region=lambda x, y, width, height: None,
+    )
 
 
 # ShapeTool._constrain (square), exercised through RectangleTool
@@ -77,3 +108,33 @@ def test_line_constrain_snaps_a_135_degree_drag():
     tool._start = (0, 0)
     x, y = tool._constrain((-9, 10))
     assert math.isclose(-x, y)
+
+
+# the eraser
+
+
+def test_the_eraser_lays_down_the_secondary_color():
+    surface = new_surface(4, 4, RED)
+    ctx = context(surface, button=Gdk.BUTTON_PRIMARY)
+    EraserTool().press(ctx, 1, 1)
+    assert pixel_at(surface, 1, 1) == (255, 255, 255, 255)
+
+
+def test_the_eraser_can_rub_back_to_transparency():
+    surface = new_surface(4, 4, RED)
+    ctx = context(surface, button=Gdk.BUTTON_PRIMARY)
+    ctx.erase_to_transparency = True
+    EraserTool().press(ctx, 1, 1)
+    assert pixel_at(surface, 1, 1) == (0, 0, 0, 0)
+
+
+def test_a_see_through_color_paints_over_what_is_there():
+    """An opaque stroke replaces the pixels; a see-through one blends with them."""
+    surface = new_surface(8, 8, RED)
+    half_white = Gdk.RGBA()
+    half_white.parse("rgba(255,255,255,0.5)")
+    ctx = context(surface, button=Gdk.BUTTON_PRIMARY, primary=half_white, size=6)
+    BrushTool().press(ctx, 4, 4)
+    red, green, blue, alpha = pixel_at(surface, 4, 4)
+    assert alpha == 255
+    assert red == 255 and 100 < green < 200

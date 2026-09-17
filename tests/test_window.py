@@ -7,6 +7,7 @@ import pytest
 from gi.repository import Adw, Gio, GdkPixbuf, GLib, Gtk
 
 from tempera import recent_files, settings
+from tempera.color import rgba
 from tempera.document import new_surface
 from tempera.main import TemperaApplication
 from tempera.window import TemperaWindow, scaled_side
@@ -455,3 +456,103 @@ def test_middle_drag_pans_the_view(window):
     window.canvas._on_pan_update(None, -50, 0)
 
     assert horizontal.get_value() == 350
+
+
+def test_tool_options_show_only_for_the_tool_in_hand(window):
+    def use(tool):
+        window.lookup_action("tool").change_state(GLib.Variant.new_string(tool))
+
+    use("rectangle")
+    assert window._fill_check.get_visible()
+    assert not window._tolerance_scale.get_visible()
+    assert not window._erase_check.get_visible()
+
+    use("fill")
+    assert window._tolerance_scale.get_visible()
+    assert not window._fill_check.get_visible()
+
+    use("eraser")
+    assert window._erase_check.get_visible()
+
+    use("text")
+    assert window._font_button.get_visible()
+    assert not window._erase_check.get_visible()
+
+
+def test_the_tolerance_slider_reaches_the_fill_tool(window):
+    window._tolerance_scale.set_value(96)
+    assert window.canvas.fill_tolerance == 96
+    assert "96" in window._tolerance_label.get_label()
+
+
+def test_erase_to_transparency_reaches_the_canvas(window):
+    window._erase_check.set_active(True)
+    assert window.canvas.erase_to_transparency
+
+
+def test_a_new_image_can_start_transparent(window):
+    window.activate_action("win.new", None)
+    dialog = window.get_visible_dialog()
+    grid = dialog.get_extra_child()
+    transparent = next(
+        child for child in grid if isinstance(child, Gtk.CheckButton)
+    )
+    transparent.set_active(True)
+
+    dialog.emit("response", "create")
+
+    assert pixel_at(window.canvas.document.surface, 0, 0) == (0, 0, 0, 0)
+
+
+def test_the_size_keys_step_the_brush(window):
+    window.canvas.brush_size = 4
+    window._size_scale.set_value(4)
+
+    window.activate_action("win.size-up", None)
+    assert window.canvas.brush_size == 5
+
+    window.activate_action("win.size-down", None)
+    window.activate_action("win.size-down", None)
+    assert window.canvas.brush_size == 3
+
+
+def test_the_bottom_bar_shows_the_size_of_a_selection(window):
+    window.canvas.select_region(1, 2, 30, 20)
+    assert "30" in window._selection_label.get_label()
+    assert "20" in window._selection_label.get_label()
+
+    window.canvas.clear_selection()
+    assert window._selection_label.get_label() == ""
+
+
+def test_the_tool_sizes_colours_and_window_size_are_remembered(application, window):
+    window.lookup_action("tool").change_state(GLib.Variant.new_string("brush"))
+    window.canvas.brush_size = 12
+    window.canvas.fill_tolerance = 77
+    window.colors.primary = rgba("#ff0000")
+    window.set_default_size(900, 700)
+    window._last_jpeg_quality = 55
+
+    window._save_preferences()
+    reopened = TemperaWindow(application)
+    try:
+        assert reopened.canvas.active_tool.id == "brush"
+        assert reopened.canvas.brush_size == 12
+        assert reopened.canvas.fill_tolerance == 77
+        assert reopened.colors.primary.to_string() == rgba("#ff0000").to_string()
+        assert reopened.get_default_size() == (900, 700)
+        assert reopened._last_jpeg_quality == 55
+        assert reopened.colors.recent
+    finally:
+        reopened.destroy()
+
+
+def test_a_damaged_preference_falls_back_to_the_default(application, window, tmp_path):
+    settings.save_settings({"brush-size": "enormous", "window-width": "wide", "tool": "hammer"})
+    reopened = TemperaWindow(application)
+    try:
+        assert reopened.canvas.brush_size == 4
+        assert reopened.get_default_size()[0] == 1120
+        assert reopened.canvas.active_tool.id == "pencil"
+    finally:
+        reopened.destroy()

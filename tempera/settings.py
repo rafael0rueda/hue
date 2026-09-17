@@ -64,17 +64,28 @@ def _load() -> configparser.ConfigParser:
     return parser
 
 
+def load_setting(key: str, fallback: str = "") -> str:
+    """One remembered preference, or the fallback when it was never saved."""
+    return _load().get(_SECTION, key, fallback=fallback)
+
+
+def save_settings(values: dict[str, str]) -> None:
+    """Remember several preferences at once, leaving the others as they were."""
+    parser = _load()
+    if not parser.has_section(_SECTION):
+        parser.add_section(_SECTION)
+    for key, value in values.items():
+        parser.set(_SECTION, key, str(value))
+    _save(parser)
+
+
 def load_palette_position() -> str:
-    position = _load().get(_SECTION, "palette-position", fallback=DEFAULT_PALETTE_POSITION)
+    position = load_setting("palette-position", DEFAULT_PALETTE_POSITION)
     return position if position in PALETTE_POSITIONS else DEFAULT_PALETTE_POSITION
 
 
 def save_palette_position(position: str) -> None:
-    parser = _load()
-    if not parser.has_section(_SECTION):
-        parser.add_section(_SECTION)
-    parser.set(_SECTION, "palette-position", position)
-    _save(parser)
+    save_settings({"palette-position": position})
 
 
 def load_shortcut_overrides() -> dict[str, list[str]]:

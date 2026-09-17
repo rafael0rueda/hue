@@ -80,12 +80,12 @@ canvas or copy from Files, all of which reach it through the desktop's file port
 | ------------- | --- | -------------------------------------------------------------------- |
 | Pencil        | `P` | Hard-edged, no antialiasing                                          |
 | Brush         | `B` | Soft round stroke                                                    |
-| Eraser        | `E` | Paints the secondary (background) colour                             |
+| Eraser        | `E` | Paints the secondary (background) colour, or rubs back to nothing    |
 | Line          | `L` | `Shift` snaps it to 45° steps                                        |
 | Rectangle     | `R` | "Fill shape" fills with the secondary colour; `Shift` draws a square |
 | Ellipse       | `O` | `Shift` draws a circle                                               |
 | Text          | `T` | Type onto the canvas in any installed font                           |
-| Fill          | `F` | Flood fill with a small colour tolerance                             |
+| Fill          | `F` | Flood fill, with a tolerance slider for how far it spreads           |
 | Colour picker | `K` | Picks the colour under the cursor                                    |
 | Select        | `S` | Rectangle to move, copy or cut                                       |
 
@@ -93,10 +93,20 @@ Left click draws with the primary colour, right click with the secondary one. Bo
 colour swatches in the bottom bar work the same way: left click sets the primary
 colour, right click the secondary. `X` swaps them.
 
+Clicking either of the two large swatches opens the colour dialog, where a colour can
+be typed in as a hex value and given an opacity: a see-through colour paints over what
+is already there instead of replacing it. Colours picked lately gather in a second row
+beside the fixed palette, so a mixed colour is one click away next time.
+
+Each tool brings its own options under the size slider: **Fill shape** for the
+rectangle and ellipse, **Erase to transparency** for the eraser, a tolerance for the
+fill, and the font for the text tool.
+
 | Action                      | Shortcut                                         |
 | --------------------------- | ------------------------------------------------ |
 | New / Open / Save / Save As | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` / `Ctrl+Shift+S`  |
 | Canvas size                 | `Ctrl+E`                                         |
+| Resize image                | `Ctrl+R`                                         |
 | Select all                  | `Ctrl+A`                                         |
 | Cut / Copy / Paste          | `Ctrl+X` / `Ctrl+C` / `Ctrl+V`                   |
 | Nudge a selection or paste  | Arrow keys (`Shift` for 10 px)                   |
@@ -105,6 +115,8 @@ colour, right click the secondary. `X` swaps them.
 | Land / discard typed text   | `Ctrl+Enter` / `Esc`                             |
 | Undo / Redo                 | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`)          |
 | Zoom in / out / 100%        | `Ctrl++` / `Ctrl+-` / `Ctrl+0`, or `Ctrl`+scroll |
+| Zoom to fit                 | `Ctrl+9`                                         |
+| Smaller / bigger brush      | `[` / `]`                                        |
 | Keyboard shortcuts          | `Ctrl+?`                                         |
 | Quit                        | `Ctrl+Q`                                         |
 
@@ -154,10 +166,19 @@ twenty.
 
 `Ctrl`+scroll zooms around the pointer, so whatever is under it stays put; `Ctrl++` and
 `Ctrl+-` step through the usual levels between 10% and 800%, and `Ctrl+0` — or clicking
-the zoom level in the bottom bar — goes back to 100%. The same three are in the main
+the zoom level in the bottom bar — goes back to 100%. `Ctrl+9` fits the whole image in
+the window, which is also how an image too large for the window opens. Drag with the
+middle mouse button to move around a zoomed image, or pinch on a touchpad to zoom. The same three are in the main
 menu, and scrolling over the zoom level in the bottom bar steps it up or down. Every tool keeps working at any zoom, and from 100% up each image pixel shows as
 a crisp square, which makes pixel-level touch-ups with the pencil easy. The bottom bar
 also shows which image pixel the pointer is over.
+
+## What Tempera remembers
+
+The window size, the tool in hand, the brush and text sizes, the font, the fill
+tolerance, both colours with the ones picked lately, the JPEG quality and where the
+palette sits are all kept in `~/.config/tempera/settings.ini` and put back the next
+time. A **New image** can start transparent instead of white.
 
 ## Moving the palette
 
@@ -165,6 +186,13 @@ The colour palette sits in the bottom bar by default. **Palette Position** in th
 menu moves it under the tools in the left sidebar, or to a column right of the canvas,
 which leaves more height for the image on wide screens. The choice is remembered in
 `~/.config/tempera/settings.ini`.
+
+## Resizing the image
+
+**Resize Image…** (`Ctrl+R`) in the main menu stretches or shrinks the whole picture, in
+pixels or as a percentage. The height follows the width unless **Keep aspect ratio** is
+turned off, and one `Ctrl+Z` puts the old size back. This is the picture itself; the
+canvas around it is the next section.
 
 ## Resizing the canvas
 

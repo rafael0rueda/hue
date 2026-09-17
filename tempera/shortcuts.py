@@ -88,7 +88,14 @@ SHORTCUT_GROUPS: list[tuple[str, list[Shortcut]]] = [
             for tool in TOOL_CLASSES
         ],
     ),
-    (_("Colors"), [Shortcut("win.swap-colors", _("Swap Colors"), ("x",))]),
+    (
+        _("Colors"),
+        [
+            Shortcut("win.swap-colors", _("Swap Colors"), ("x",)),
+            Shortcut("win.size-down", _("Smaller Brush or Text"), ("bracketleft",)),
+            Shortcut("win.size-up", _("Bigger Brush or Text"), ("bracketright",)),
+        ],
+    ),
     (
         _("Application"),
         [

@@ -26,6 +26,10 @@ class ToolContext:
     select_region: Callable[[float, float, float, float], None]
     # Shift held: squares up a shape or snaps a line to a 45° angle.
     constrain: bool = False
+    # The eraser rubs back to transparency rather than to the secondary color.
+    erase_to_transparency: bool = False
+    # How far from the color under the pointer a flood fill still spreads.
+    tolerance: int = 32
 
     @property
     def color(self) -> Gdk.RGBA:
@@ -88,11 +92,16 @@ class FreehandTool(Tool):
         cr = cairo.Context(ctx.surface)
         if not self.antialias:
             cr.set_antialias(cairo.ANTIALIAS_NONE)
-        cr.set_operator(cairo.OPERATOR_SOURCE)
+        # A see-through color paints over what is there; an opaque one replaces
+        # it, which is what lets the eraser rub back to transparency.
+        color = self.stroke_color(ctx)
+        cr.set_operator(
+            cairo.OPERATOR_OVER if 0 < color.alpha < 1 else cairo.OPERATOR_SOURCE
+        )
         cr.set_line_width(ctx.size)
         cr.set_line_cap(self.line_cap)
         cr.set_line_join(cairo.LINE_JOIN_ROUND)
-        set_source(cr, self.stroke_color(ctx))
+        set_source(cr, color)
         return cr
 
     def _snap(self, value: float) -> float:

@@ -16,6 +16,9 @@ from .file_io import load_surface_async
 from .i18n import _
 from .text import DEFAULT_FONT, TextBox
 from .tools import (
+    DEFAULT_TOLERANCE,
+    ERASER_TOOL_ID,
+    FILL_TOOL_ID,
     SELECT_TOOL_ID,
     SHAPE_TOOL_IDS,
     TEXT_TOOL_ID,
@@ -205,6 +208,8 @@ class Canvas(Gtk.DrawingArea):
         self.active_tool: Tool = self.tools["pencil"]
         self.brush_size = 4
         self.fill_shapes = False
+        self.erase_to_transparency = False
+        self.fill_tolerance = DEFAULT_TOLERANCE
         self.font = DEFAULT_FONT
         self.zoom = 1.0
 
@@ -343,6 +348,14 @@ class Canvas(Gtk.DrawingArea):
     @property
     def supports_font(self) -> bool:
         return self.active_tool.id == TEXT_TOOL_ID
+
+    @property
+    def supports_erase_mode(self) -> bool:
+        return self.active_tool.id == ERASER_TOOL_ID
+
+    @property
+    def supports_tolerance(self) -> bool:
+        return self.active_tool.id == FILL_TOOL_ID
 
     def set_font(self, font: str) -> None:
         self.font = font
@@ -538,6 +551,13 @@ class Canvas(Gtk.DrawingArea):
     @property
     def has_selection(self) -> bool:
         return self._selection is not None
+
+    @property
+    def selection_size(self) -> tuple[int, int] | None:
+        """How big the selection is, for the readout in the bottom bar."""
+        if self._selection is None:
+            return None
+        return self._selection.width, self._selection.height
 
     def set_selection(self, selection: Selection | None) -> None:
         if selection == self._selection:
@@ -992,6 +1012,8 @@ class Canvas(Gtk.DrawingArea):
             button=button,
             size=self.brush_size,
             fill_shapes=self.fill_shapes,
+            erase_to_transparency=self.erase_to_transparency,
+            tolerance=self.fill_tolerance,
             pick_color=lambda color, btn: self.emit("color-picked", color, btn),
             begin_text=self.begin_text,
             select_region=self.select_region,
