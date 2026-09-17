@@ -5,8 +5,17 @@
    comes from libadwaita's palette, so the app follows the system light/dark
    preference and accent colour automatically. Re-theming means editing this file. */
 
+/* The frame around the canvas: sidebars, palette strip and bottom bar share the
+   header's colour so the chrome reads as one surface. */
+.hue-chrome {
+  background-color: @headerbar_bg_color;
+}
+
+.hue-chrome:backdrop {
+  background-color: @headerbar_backdrop_color;
+}
+
 .hue-sidebar {
-  background-color: @sidebar_bg_color;
   padding: 12px;
 }
 
@@ -20,8 +29,21 @@
   color: @accent_fg_color;
 }
 
+/* The canvas area is a card inset in the frame. The sidebar's padding spaces
+   it on the left; its own margin does the right edge unless the palette strip
+   is there. */
 .hue-canvas-area {
+  /* Shaded so the card stands apart from the frame in light mode too, where
+     the header and view colours are both near white. */
   background-color: @view_bg_color;
+  background-image: linear-gradient(@shade_color, @shade_color);
+  border: 1px solid alpha(@view_fg_color, 0.08);
+  border-radius: 12px;
+  margin: 12px 12px 0 0;
+}
+
+.hue-canvas-area.hue-palette-beside {
+  margin-right: 0;
 }
 
 .hue-canvas {

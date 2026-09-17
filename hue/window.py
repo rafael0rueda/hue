@@ -8,7 +8,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 from . import APP_NAME, shortcuts
 from .canvas import Canvas, CanvasFrame
 from .clipboard import has_image, read_image, texture_from_surface
-from .color import ColorBar, ColorState
+from .color import ColorBar, ColorState, PaletteLayout
 from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_SIZE, Document, new_surface
 from .file_io import (
     format_for,
@@ -76,10 +76,18 @@ class HueWindow(Adw.ApplicationWindow):
         # Where the palette can go: position -> (slot it sits in, strip to show).
         self._palette_slots: dict[str, tuple[Gtk.Box, Gtk.Box | None]] = {}
 
+        # The sidebars and bottom bar sit in one frame with the header's colour,
+        # and the canvas is inset in it as a card, so no separator lines are
+        # needed where they meet. The bottom bar is part of the content rather
+        # than a toolbar-view bar, which would paint it a colour of its own.
+        chrome = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        chrome.add_css_class("hue-chrome")
+        chrome.append(self._build_content())
+        chrome.append(self._build_bottom_bar())
+
         toolbars = Adw.ToolbarView()
         toolbars.add_top_bar(self._build_header())
-        toolbars.add_bottom_bar(self._build_bottom_bar())
-        toolbars.set_content(self._build_content())
+        toolbars.set_content(chrome)
         self._place_palette(load_palette_position())
 
         self.toasts.set_child(toolbars)
@@ -204,32 +212,24 @@ class HueWindow(Adw.ApplicationWindow):
     def _build_content(self) -> Gtk.Widget:
         content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         content.append(self._build_sidebar())
-        content.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
 
-        left_slot, left_strip = self._build_palette_strip(separator_first=False)
-        content.append(left_strip)
+        self._canvas_card = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
+        self._canvas_card.add_css_class("hue-canvas-area")
+        self._canvas_card.set_child(CanvasFrame(self.canvas))
+        content.append(self._canvas_card)
 
-        scrolled = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
-        scrolled.add_css_class("hue-canvas-area")
-        scrolled.set_child(CanvasFrame(self.canvas))
-        content.append(scrolled)
-
-        right_slot, right_strip = self._build_palette_strip(separator_first=True)
+        right_strip = self._build_palette_strip()
         content.append(right_strip)
 
-        self._palette_slots["left"] = (left_slot, left_strip)
-        self._palette_slots["right"] = (right_slot, right_strip)
+        # The strip is both the slot the palette sits in and what gets shown.
+        self._palette_slots["right"] = (right_strip, right_strip)
         return content
 
-    def _build_palette_strip(self, separator_first: bool) -> tuple[Gtk.Box, Gtk.Box]:
-        """A column beside the canvas for the palette, hidden while it is elsewhere."""
-        slot = Gtk.Box()
-        slot.add_css_class("hue-sidebar")
-        separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
-        strip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, visible=False)
-        for child in (separator, slot) if separator_first else (slot, separator):
-            strip.append(child)
-        return slot, strip
+    def _build_palette_strip(self) -> Gtk.Box:
+        """A column right of the canvas for the palette, hidden while it is elsewhere."""
+        strip = Gtk.Box(visible=False)
+        strip.add_css_class("hue-sidebar")
+        return strip
 
     def _build_sidebar(self) -> Gtk.Widget:
         sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -279,7 +279,23 @@ class HueWindow(Adw.ApplicationWindow):
         self._font_button.connect("clicked", self._choose_font)
         sidebar.append(self._font_button)
 
-        return sidebar
+        # The palette's place when it is on the left: under the tool options.
+        left_section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, visible=False)
+        left_section.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        left_slot = Gtk.Box(halign=Gtk.Align.CENTER)
+        left_section.append(left_slot)
+        sidebar.append(left_section)
+        self._palette_slots["left"] = (left_slot, left_section)
+
+        # Scrolls rather than squeezing when the window is too short for it all,
+        # which the palette makes likelier.
+        scrolled = Gtk.ScrolledWindow(
+            hscrollbar_policy=Gtk.PolicyType.NEVER,
+            vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
+            propagate_natural_width=True,
+        )
+        scrolled.set_child(sidebar)
+        return scrolled
 
     # Actions
 
@@ -374,7 +390,18 @@ class HueWindow(Adw.ApplicationWindow):
                 strip.set_visible(name == position)
         slot, _strip = self._palette_slots[position]
         slot.append(self._color_bar)
-        self._color_bar.set_vertical(position != "bottom")
+        self._color_bar.set_layout(
+            {
+                "bottom": PaletteLayout.WIDE,
+                "left": PaletteLayout.BLOCK,
+                "right": PaletteLayout.NARROW,
+            }[position]
+        )
+        # The strip's padding already spaces the card from the right edge.
+        if position == "right":
+            self._canvas_card.add_css_class("hue-palette-beside")
+        else:
+            self._canvas_card.remove_css_class("hue-palette-beside")
         self._palette_position = position
 
     def _on_size_changed(self, scale: Gtk.Scale) -> None:

@@ -85,6 +85,13 @@ def test_palette_moves_to_a_side_strip(window, position):
     assert visible == {position}
 
 
+@pytest.mark.parametrize("position, columns", [("bottom", 10), ("left", 5), ("right", 2)])
+def test_palette_grid_fits_where_it_is(window, position, columns):
+    window.activate_action("win.palette-position", GLib.Variant.new_string(position))
+    grid = window._color_bar._grid
+    assert max(grid.query_child(child)[0] for child in window._color_bar._palette_swatches) == columns - 1
+
+
 def test_palette_returns_to_the_bottom(window):
     window.activate_action("win.palette-position", GLib.Variant.new_string("left"))
     window.activate_action("win.palette-position", GLib.Variant.new_string("bottom"))

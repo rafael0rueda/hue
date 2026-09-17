@@ -102,6 +102,12 @@ class Swatch(Gtk.DrawingArea):
         cr.stroke()
 
 
+class PaletteLayout:
+    WIDE = "wide"  # a row along the bottom bar
+    NARROW = "narrow"  # a column beside the canvas
+    BLOCK = "block"  # a block under the tools in the sidebar
+
+
 class ColorBar(Gtk.Box):
     """Current colors, the fixed palette, and a custom color picker."""
 
@@ -120,13 +126,19 @@ class ColorBar(Gtk.Box):
         current.set_halign(Gtk.Align.CENTER)
         current.append(self._primary_swatch)
         current.append(self._secondary_swatch)
-        self.append(current)
 
         # The window gives it a tooltip naming the current shortcut.
         self.swap_button = Gtk.Button(icon_name="hue-swap-symbolic")
         self.swap_button.add_css_class("flat")
+        self.swap_button.set_halign(Gtk.Align.CENTER)
+        self.swap_button.set_valign(Gtk.Align.CENTER)
         self.swap_button.connect("clicked", lambda *_: colors.swap())
-        self.append(self.swap_button)
+
+        # The current colors and the swap button, side by side or stacked.
+        self._current_row = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER)
+        self._current_row.append(current)
+        self._current_row.append(self.swap_button)
+        self.append(self._current_row)
 
         self._grid = Gtk.Grid(row_spacing=4, column_spacing=4)
         self._palette_swatches = []
@@ -137,25 +149,28 @@ class ColorBar(Gtk.Box):
             self._palette_swatches.append(swatch)
         self.append(self._grid)
 
-        self.set_vertical(False)
+        self.set_layout(PaletteLayout.WIDE)
         colors.connect("changed", self._sync)
 
-    def set_vertical(self, vertical: bool) -> None:
-        """Lay out as a wide strip for the bottom bar, or a tall one for a side of the canvas."""
-        self.set_orientation(Gtk.Orientation.VERTICAL if vertical else Gtk.Orientation.HORIZONTAL)
-        # A side strip brings its own padding, so only the bottom bar needs margins.
-        margin_x, margin_y = (0, 0) if vertical else (12, 6)
+    def set_layout(self, layout: str) -> None:
+        """Lay out for the bottom bar, a narrow strip beside the canvas, or the tool sidebar."""
+        wide = layout == PaletteLayout.WIDE
+        self.set_orientation(Gtk.Orientation.HORIZONTAL if wide else Gtk.Orientation.VERTICAL)
+        # A strip or the sidebar brings its own padding, so only the bottom bar needs margins.
+        margin_x, margin_y = (12, 6) if wide else (0, 0)
         self.set_margin_start(margin_x)
         self.set_margin_end(margin_x)
         self.set_margin_top(margin_y)
         self.set_margin_bottom(margin_y)
 
-        self.swap_button.set_halign(Gtk.Align.CENTER if vertical else Gtk.Align.FILL)
-        self.swap_button.set_valign(Gtk.Align.FILL if vertical else Gtk.Align.CENTER)
-        self._grid.set_halign(Gtk.Align.CENTER if vertical else Gtk.Align.FILL)
-        self._grid.set_valign(Gtk.Align.START if vertical else Gtk.Align.CENTER)
+        stacked = layout == PaletteLayout.NARROW
+        self._current_row.set_orientation(
+            Gtk.Orientation.VERTICAL if stacked else Gtk.Orientation.HORIZONTAL
+        )
+        self._grid.set_halign(Gtk.Align.FILL if wide else Gtk.Align.CENTER)
+        self._grid.set_valign(Gtk.Align.CENTER if wide else Gtk.Align.START)
 
-        columns = 2 if vertical else 10
+        columns = {PaletteLayout.WIDE: 10, PaletteLayout.NARROW: 2, PaletteLayout.BLOCK: 5}[layout]
         for swatch in self._palette_swatches:
             if swatch.get_parent() is not None:
                 self._grid.remove(swatch)

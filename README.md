@@ -141,8 +141,8 @@ also shows which image pixel the pointer is over.
 ## Moving the palette
 
 The colour palette sits in the bottom bar by default. **Palette Position** in the main
-menu moves it to a column on the left or right of the canvas instead, which leaves more
-height for the image on wide screens. The choice is remembered in
+menu moves it under the tools in the left sidebar, or to a column right of the canvas,
+which leaves more height for the image on wide screens. The choice is remembered in
 `~/.config/hue/settings.ini`.
 
 ## Resizing the canvas
@@ -236,7 +236,7 @@ gives the same pixels.
 
 libadwaita does the work: the app follows the system colour scheme and accent colour
 with no configuration. The only custom styling lives in `data/style.css`, written
-against libadwaita's named colours (`@accent_bg_color`, `@sidebar_bg_color`, …) rather
+against libadwaita's named colours (`@accent_bg_color`, `@headerbar_bg_color`, …) rather
 than fixed values, so re-theming the app means editing that one file. Tool icons are
 symbolic SVGs in `data/icons/`, so they recolour with the theme too.
 
