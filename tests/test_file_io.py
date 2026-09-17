@@ -12,10 +12,12 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
 from tempera.document import MAX_SIZE, Document, new_surface
 from tempera.file_io import (
     ICO_MAX_SIZE,
+    OPEN_MIME_TYPES,
     format_for,
     image_filters,
     load_document,
     load_surface,
+    save_as_name,
     save_document,
     with_default_extension,
 )
@@ -50,9 +52,16 @@ def test_format_for_is_case_insensitive():
     assert format_for(gio_file(Path("a.JPG"))) == "jpeg"
 
 
-def test_format_for_defaults_to_png_for_unknown_or_missing_extension():
-    assert format_for(gio_file(Path("a.xyz"))) == "png"
-    assert format_for(gio_file(Path("a"))) == "png"
+def test_format_for_is_none_for_a_format_tempera_cannot_write():
+    assert format_for(gio_file(Path("a.xyz"))) is None
+    assert format_for(gio_file(Path("a.gif"))) is None
+    assert format_for(gio_file(Path("a"))) is None
+
+
+def test_format_for_a_network_location_without_a_local_path():
+    file = Gio.File.new_for_uri("sftp://example.com/pictures/photo.JPG")
+    assert file.get_path() is None
+    assert format_for(file) == "jpeg"
 
 
 # with_default_extension
@@ -68,6 +77,22 @@ def test_with_default_extension_keeps_a_name_that_has_one(tmp_path):
     assert with_default_extension(chosen).equal(chosen)
 
 
+def test_with_default_extension_adds_png_after_a_format_it_cannot_write(tmp_path):
+    file = with_default_extension(gio_file(tmp_path / "animation.gif"))
+    assert file.get_path() == str(tmp_path / "animation.gif.png")
+
+
+# save_as_name
+
+
+def test_save_as_name_keeps_a_writable_name():
+    assert save_as_name(gio_file(Path("photo.jpg"))) == "photo.jpg"
+
+
+def test_save_as_name_suggests_png_for_a_format_it_cannot_write():
+    assert save_as_name(gio_file(Path("animation.gif"))) == "animation.png"
+
+
 # image_filters
 
 
@@ -76,6 +101,13 @@ def test_image_filters_offers_images_png_and_all_files():
     names = [store.get_item(i).get_name() for i in range(store.get_n_items())]
     assert names == ["Images", "PNG image", "All files"]
     assert all(isinstance(store.get_item(i), Gtk.FileFilter) for i in range(store.get_n_items()))
+
+
+def test_images_filter_includes_gif_and_ico():
+    _name, rules = image_filters().get_item(0).to_gvariant().unpack()
+    mime_types = {pattern for _kind, pattern in rules}
+    assert mime_types == set(OPEN_MIME_TYPES)
+    assert {"image/gif", "image/vnd.microsoft.icon"} <= mime_types
 
 
 # load_document
@@ -93,6 +125,46 @@ def test_load_document_reads_pixels_and_sets_the_file(tmp_path):
     assert (document.width, document.height) == (2, 2)
     assert pixel_at(document.surface, 0, 0) == (0, 255, 0, 255)
     assert document.file == file
+
+
+def jpeg_with_orientation(orientation: int) -> bytes:
+    """A 40 × 20 JPEG, red in its stored top-left corner, tagged with an EXIF orientation."""
+    pixbuf = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, 40, 20)
+    pixbuf.fill(0xFFFFFFFF)
+    pixbuf.new_subpixbuf(0, 0, 8, 8).fill(0xFF0000FF)
+    _ok, data = pixbuf.save_to_bufferv("jpeg", ["quality"], ["100"])
+    # One little-endian TIFF directory holding only the Orientation tag (0x0112).
+    tiff = b"II*\0" + struct.pack("<I", 8) + struct.pack("<HHHIHHI", 1, 0x0112, 3, 1, orientation, 0, 0)
+    exif = b"Exif\0\0" + tiff
+    app1 = b"\xff\xe1" + struct.pack(">H", len(exif) + 2) + exif
+    return data[:2] + app1 + data[2:]
+
+
+def is_red(pixel) -> bool:
+    red, green, blue, _alpha = pixel
+    return red > 200 and green < 80 and blue < 80
+
+
+def test_load_surface_turns_a_photo_the_way_its_camera_says(tmp_path):
+    path = tmp_path / "portrait.jpg"
+    # 6: stored lying on its side, shown turned a quarter clockwise.
+    path.write_bytes(jpeg_with_orientation(6))
+
+    surface = load_surface(gio_file(path))
+
+    assert (surface.get_width(), surface.get_height()) == (20, 40)
+    assert is_red(pixel_at(surface, 16, 3))
+    assert not is_red(pixel_at(surface, 3, 3))
+
+
+def test_load_surface_leaves_an_upright_photo_alone(tmp_path):
+    path = tmp_path / "landscape.jpg"
+    path.write_bytes(jpeg_with_orientation(1))
+
+    surface = load_surface(gio_file(path))
+
+    assert (surface.get_width(), surface.get_height()) == (40, 20)
+    assert is_red(pixel_at(surface, 3, 3))
 
 
 def write_png(path: Path, width: int, height: int) -> None:
@@ -230,6 +302,18 @@ def test_a_failed_save_leaves_the_existing_file_untouched(tmp_path):
     assert path.read_bytes() == b"the original icon"
     assert document.file is None
     assert document.modified is True
+
+
+def test_save_document_refuses_a_format_it_cannot_write(tmp_path):
+    path = tmp_path / "animation.gif"
+    path.write_bytes(b"the original animation")
+    document = Document(new_surface(2, 2, WHITE))
+
+    with pytest.raises(GLib.Error, match=r"Cannot save images as \.gif"):
+        save_document(document, gio_file(path))
+
+    assert path.read_bytes() == b"the original animation"
+    assert document.file is None
 
 
 def test_save_document_raises_rather_than_crashing_for_a_missing_folder(tmp_path):

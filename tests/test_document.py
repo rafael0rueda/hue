@@ -3,6 +3,7 @@
 
 from tempera import document as document_module
 from tempera.document import (
+    MAX_SIZE,
     MAX_UNDO,
     Document,
     copy_surface,
@@ -295,6 +296,13 @@ def test_paste_grows_the_canvas_when_it_overhangs():
     assert pixel_at(document.surface, 2, 2) == (255, 0, 0, 255)
     # The room the growth added, outside the pasted rectangle, is left white.
     assert pixel_at(document.surface, 0, 2) == (255, 255, 255, 255)
+
+
+def test_paste_says_whether_it_was_cut_off_at_the_size_limit():
+    document = Document(new_surface(4, 4, WHITE))
+    assert document.paste(new_surface(2, 2, RED), 1, 1) is False
+    assert document.paste(new_surface(20, 2, RED), MAX_SIZE - 10, 0) is True
+    assert document.width == MAX_SIZE
 
 
 def test_paste_erases_the_source_rect_it_moved_from():

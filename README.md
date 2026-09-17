@@ -120,18 +120,26 @@ from the defaults are stored, and **Reset All Shortcuts** puts everything back.
 
 ## Opening and saving
 
-Images open in any format GdkPixbuf reads (PNG, JPEG, BMP, TIFF, WebP…), up to 8192 ×
-8192 pixels; a larger image is refused with a message rather than loaded. **Recent
-Files** in the main menu lists the last eight images you opened or saved; one that can
-no longer be opened is taken off the list when you pick it.
+Images open in any format GdkPixbuf reads (PNG, JPEG, BMP, TIFF, WebP, GIF, ICO…), up
+to 8192 × 8192 pixels; a larger image is refused with a message rather than loaded.
+Photos open the right way up, following the orientation the camera or phone recorded.
+**Recent Files** in the main menu lists the last eight images you opened or saved; one
+that can no longer be opened is taken off the list when you pick it.
 
-Saving uses the format matching the file extension. A name typed without one gets
-`.png` added — Tempera asks first if that would replace an existing file — and saving as
-JPEG asks for a quality from 1 to 100, remembering your last choice while the window is
-open. The image is
+Saving writes PNG, JPEG, BMP, TIFF, WebP or ICO, picked by the file extension. A name
+typed without one of those gets `.png` added — Tempera asks first if that would replace
+an existing file. **Save As** to a JPEG asks for a quality from 1 to 100; `Ctrl+S`
+afterwards keeps that choice without asking again, for as long as the window is open.
+An image opened from a format Tempera cannot write, such as GIF, is never overwritten:
+`Ctrl+S` asks where to save it, suggesting the same name as a PNG. The image is
 written in full before it replaces the old file, so a save that fails, on a full disk
 say, leaves the original untouched. BMP and JPEG have no transparency, so transparent
 areas are saved as white; ICO files are limited to 256 × 256 pixels.
+
+Closing a window, opening another image or starting a new one asks first when there are
+unsaved changes, including a paste or typed text that has not landed yet; **Cancel**
+leaves everything exactly as it was. `Ctrl+Q` closes every window, asking in each one
+that has unsaved changes.
 
 The title shows `•` while there are unsaved changes, and undoing back to the image as
 it was last saved clears it again. Undo keeps up to 50 steps, fewer for very large
@@ -177,7 +185,8 @@ in Files pastes just as well as one copied as pixels.
 
 If the pasted image runs off the right or bottom edge — a full-screen screenshot on a
 smaller canvas usually does — the canvas grows to fit it when the paste lands, so
-nothing is cropped. The size readout in the bottom bar counts out the size you are
+nothing is cropped. The one exception is the 8192 × 8192 pixel limit: whatever would
+land past it is cut off, and a message says so. The size readout in the bottom bar counts out the size you are
 heading for while the paste is still floating, and one `Ctrl+Z` afterwards takes back
 both the pixels and the new canvas size.
 
@@ -234,6 +243,10 @@ The text stays editable until it lands. `Enter` starts a new line, the arrow key
 the caret where you clicked. Dragging the box moves it. Nothing is written into the
 image until you press `Ctrl+Enter`, click outside the box, or switch to another tool;
 `Esc` or `Ctrl+Z` throws it away instead.
+
+Input methods work too: while one is still composing, say Japanese before it is
+converted, the unfinished word shows underlined at the caret. Only what the input method
+has finished lands in the image.
 
 Once it lands the text is pixels like everything else — there is no going back to
 editing it, only `Ctrl+Z`. Text that runs off the right or bottom edge grows the canvas

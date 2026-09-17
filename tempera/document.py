@@ -285,13 +285,16 @@ class Document(GObject.Object):
         x: int = 0,
         y: int = 0,
         erase: tuple[int, int, int, int] | None = None,
-    ) -> None:
+    ) -> bool:
         """Stamp an image onto the canvas, growing it if the image runs off the edge.
 
         The growth, the optional erase of where the pixels came from, and the stamp
-        share one undo entry, so a single undo takes back a whole move.
+        share one undo entry, so a single undo takes back a whole move. Returns
+        whether part of the image was cut off because the canvas cannot grow past
+        MAX_SIZE.
         """
         x, y = max(0, int(x)), max(0, int(y))
+        cut_off = x + image.get_width() > MAX_SIZE or y + image.get_height() > MAX_SIZE
         width = min(max(self.width, x + image.get_width()), MAX_SIZE)
         height = min(max(self.height, y + image.get_height()), MAX_SIZE)
 
@@ -306,6 +309,7 @@ class Document(GObject.Object):
         cr.set_source_surface(image, x, y)
         cr.paint()
         self.commit_change()
+        return cut_off
 
     def to_pixbuf(self) -> GdkPixbuf.Pixbuf:
         self.surface.flush()

@@ -3,9 +3,9 @@
 
 from gi.repository import Gdk
 
-from tempera.canvas import Canvas, FloatingPaste, Selection
+from tempera.canvas import CUT_OFF_MESSAGE, Canvas, FloatingPaste, Selection
 from tempera.color import ColorState
-from tempera.document import Document, new_surface
+from tempera.document import MAX_SIZE, Document, new_surface
 
 from pixels import paint_pixel, pixel_at
 
@@ -172,3 +172,35 @@ def test_a_new_document_does_not_receive_the_old_floating_paste():
     assert not canvas.has_floating
     assert pixel_at(replacement.surface, 0, 0) == (255, 255, 255, 255)
     assert not replacement.can_undo
+
+
+# messages and pending changes
+
+
+def test_a_paste_cut_off_at_the_size_limit_says_so():
+    canvas = make_canvas()
+    messages = []
+    canvas.connect("message", lambda _canvas, message: messages.append(message))
+
+    canvas.begin_paste(new_surface(2, 2, RED), 0, 0)
+    canvas.commit_paste()
+    assert messages == []
+
+    canvas.begin_paste(new_surface(20, 2, RED), MAX_SIZE - 10, 0)
+    canvas.commit_paste()
+    assert messages == [CUT_OFF_MESSAGE]
+
+
+def test_pending_floating_counts_a_paste_and_typed_text_only():
+    canvas = make_canvas()
+    assert not canvas.has_pending_floating
+
+    canvas.begin_text(0, 0, Gdk.RGBA())
+    assert canvas.has_floating
+    assert not canvas.has_pending_floating
+    canvas._text.insert("hi")
+    assert canvas.has_pending_floating
+    canvas.cancel_text()
+
+    canvas.begin_paste(new_surface(2, 2, RED), 0, 0)
+    assert canvas.has_pending_floating

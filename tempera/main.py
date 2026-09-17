@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import sys
+import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 
 import gi
@@ -20,6 +21,43 @@ from .file_io import load_document  # noqa: E402
 from .recent_files import remember_recent  # noqa: E402
 from .settings import migrate_old_config  # noqa: E402
 from .window import TemperaWindow  # noqa: E402
+
+
+WEBSITE = "https://github.com/rafael0rueda/tempera"
+ISSUES = WEBSITE + "/issues"
+
+
+def metainfo_path(directory: Path | None = None) -> Path | None:
+    """The AppStream metainfo, next to the data in a source tree or in share/metainfo installed."""
+    directory = data_dir() if directory is None else directory
+    if directory is None:
+        return None
+    name = f"{APP_ID}.metainfo.xml"
+    for candidate in (directory / name, directory.parent / "metainfo" / name):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def release_notes(path: Path | None) -> tuple[str, str] | None:
+    """(version, notes) for the newest release in the metainfo, for the About dialog.
+
+    The notes are the release's description, which is already the small subset
+    of markup (paragraphs and lists) the dialog understands.
+    """
+    if path is None:
+        return None
+    try:
+        release = ElementTree.parse(path).getroot().find("releases/release")
+    except (OSError, ElementTree.ParseError):
+        return None
+    if release is None:
+        return None
+    description = release.find("description")
+    notes = "" if description is None else "".join(
+        ElementTree.tostring(child, encoding="unicode") for child in description
+    )
+    return release.get("version", ""), notes
 
 
 def data_dir() -> Path | None:
@@ -87,21 +125,30 @@ class TemperaApplication(Adw.Application):
             )
 
     def _on_quit(self, *_):
-        window = self.props.active_window
-        if window is not None:
-            window.close()
-        else:
+        # Each window asks about its own unsaved changes; the application ends
+        # once the last one has gone.
+        windows = self.get_windows()
+        if not windows:
             self.quit()
+        for window in windows:
+            window.close()
 
     def _on_about(self, *_):
         about = Adw.AboutDialog(
             application_name=APP_NAME,
             application_icon=APP_ID,
             version=VERSION,
-            developer_name="Tempera contributors",
+            developer_name="Rafael Rueda",
+            copyright="© 2026 Rafael Rueda",
             comments="A simple, offline raster paint app for the GNOME desktop.",
+            website=WEBSITE,
+            issue_url=ISSUES,
             license_type=Gtk.License.GPL_3_0,
         )
+        notes = release_notes(metainfo_path())
+        if notes is not None and notes[0] == VERSION:
+            about.set_release_notes_version(notes[0])
+            about.set_release_notes(notes[1])
         about.present(self.props.active_window)
 
 

@@ -5,6 +5,8 @@ import pytest
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from tempera import recent_files, settings
+from tempera.document import new_surface
+from tempera.main import TemperaApplication
 from tempera.window import TemperaWindow
 
 from pixels import paint_pixel, pixel_at
@@ -206,3 +208,74 @@ def test_scrolling_over_the_zoom_level_steps_the_zoom(window):
     window._on_zoom_label_scroll(None, 0, 1)
     window._on_zoom_label_scroll(None, 0, 1)
     assert window.canvas.zoom < 1.0
+
+
+def test_a_floating_paste_is_asked_about_but_not_landed_on_close(application, window):
+    window.canvas.begin_paste(new_surface(2, 2, RED), 0, 0)
+
+    window.present()
+    settle()
+    window.close()
+    settle()
+
+    assert window in application.get_windows()
+    assert isinstance(window.get_visible_dialog(), Adw.AlertDialog)
+    # Cancel must leave things as they were, so nothing has landed yet.
+    assert window.canvas.has_floating
+    assert not window.canvas.document.can_undo
+
+
+def test_an_empty_text_box_does_not_stop_the_window_closing(application, window):
+    window.canvas.begin_text(10, 10, window.colors.primary)
+    window.present()
+    settle()
+    window.close()
+    settle()
+    assert window not in application.get_windows()
+
+
+def test_save_keeps_the_jpeg_quality_without_asking(window, tmp_path):
+    path = tmp_path / "photo.jpg"
+    window.canvas.document.file = Gio.File.new_for_path(str(path))
+    window.present()
+    settle()
+
+    window.activate_action("win.save", None)
+    settle()
+
+    assert path.stat().st_size > 0
+    assert window.get_visible_dialog() is None
+
+
+def test_save_asks_where_for_an_image_it_cannot_write_back(window, tmp_path, monkeypatch):
+    path = tmp_path / "animation.gif"
+    path.write_bytes(b"the original animation")
+    window.canvas.document.file = Gio.File.new_for_path(str(path))
+    asked = []
+    monkeypatch.setattr(window, "_save_as", lambda then=None: asked.append(then))
+
+    window.activate_action("win.save", None)
+
+    assert asked == [None]
+    assert path.read_bytes() == b"the original animation"
+
+
+def test_quit_closes_every_window_asking_about_unsaved_ones(application, window):
+    changed = TemperaWindow(application)
+    try:
+        document = changed.canvas.document
+        document.begin_change()
+        paint_pixel(document.surface, 0, 0, RED)
+        document.commit_change()
+        window.present()
+        changed.present()
+        settle()
+
+        TemperaApplication._on_quit(application)
+        settle()
+
+        assert window not in application.get_windows()
+        assert changed in application.get_windows()
+        assert isinstance(changed.get_visible_dialog(), Adw.AlertDialog)
+    finally:
+        changed.destroy()

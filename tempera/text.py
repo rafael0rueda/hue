@@ -36,10 +36,17 @@ def font_without_size(font: str) -> str:
     return description.to_string()
 
 
-def create_layout(text: str, font: str) -> Pango.Layout:
+def create_layout(text: str, font: str, underline: tuple[int, int] | None = None) -> Pango.Layout:
+    """A layout of the text; `underline` is a (start, end) byte range to underline."""
     layout = Pango.Layout.new(_FONT_MAP.create_context())
     layout.set_font_description(Pango.FontDescription(font))
     layout.set_text(text, -1)
+    if underline is not None:
+        attribute = Pango.attr_underline_new(Pango.Underline.SINGLE)
+        attribute.start_index, attribute.end_index = underline
+        attributes = Pango.AttrList()
+        attributes.insert(attribute)
+        layout.set_attributes(attributes)
     return layout
 
 
@@ -48,14 +55,21 @@ class TextBox:
 
     Pango indexes text in UTF-8 bytes while the caret here counts characters, so
     the two are converted at the boundary rather than mixed up in the editing.
+
+    The preedit is what an input method is still composing. It shows, underlined,
+    at the caret, but is not part of the text until the input method commits it.
+    The input method holds on to the keys while it composes, so the editing and
+    caret methods below only ever run with no preedit showing.
     """
 
     def __init__(self, x: float, y: float, color: Gdk.RGBA, font: str = DEFAULT_FONT):
         self._text = ""
+        self._preedit = ""
+        self._preedit_cursor = 0
         self._font = font
         self._layout: Pango.Layout | None = None
         self.color = color
-        self.caret = 0
+        self._caret = 0
         self.x = 0.0
         self.y = 0.0
         self.move_to(x, y)
@@ -79,9 +93,34 @@ class TextBox:
         self._layout = None
 
     @property
+    def caret(self) -> int:
+        return self._caret
+
+    @caret.setter
+    def caret(self, value: int) -> None:
+        self._caret = value
+        if self._preedit:
+            # The preedit sits at the caret, so the layout moves with it.
+            self._layout = None
+
+    @property
+    def preedit(self) -> str:
+        return self._preedit
+
+    def set_preedit(self, preedit: str, cursor: int) -> None:
+        """Show an input method's unfinished text, with its own cursor counted in characters."""
+        self._preedit = preedit
+        self._preedit_cursor = max(0, min(cursor, len(preedit)))
+        self._layout = None
+
+    @property
     def layout(self) -> Pango.Layout:
+        """The text as shown, with any preedit in place at the caret."""
         if self._layout is None:
-            self._layout = create_layout(self._text, self._font)
+            before, after = self._text[: self.caret], self._text[self.caret:]
+            start = len(before.encode())
+            underline = (start, start + len(self._preedit.encode())) if self._preedit else None
+            self._layout = create_layout(before + self._preedit + after, self._font, underline)
         return self._layout
 
     @property
@@ -146,8 +185,9 @@ class TextBox:
         self.caret = self._char_index(index, trailing)
 
     def caret_rect(self) -> tuple[float, float, float]:
-        """Where to draw the caret, in canvas coordinates."""
-        strong, _weak = self.layout.get_cursor_pos(self._byte_index())
+        """Where to draw the caret, in canvas coordinates: inside the preedit while there is one."""
+        index = len((self._text[: self.caret] + self._preedit[: self._preedit_cursor]).encode())
+        strong, _weak = self.layout.get_cursor_pos(index)
         return (
             self.x + strong.x / Pango.SCALE,
             self.y + strong.y / Pango.SCALE,
@@ -175,10 +215,18 @@ class TextBox:
         cr.restore()
 
     def render_surface(self) -> cairo.ImageSurface | None:
-        """The typed text on its own transparent surface, ready to be stamped down."""
-        width, height = self.size
-        if not self._text or width <= 0 or height <= 0:
+        """The typed text on its own transparent surface, ready to be stamped down.
+
+        Any preedit is left out: it has not been typed yet.
+        """
+        if not self._text:
+            return None
+        layout = create_layout(self._text, self._font)
+        width, height = layout.get_pixel_size()
+        if width <= 0 or height <= 0:
             return None
         surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
-        self.render(cairo.Context(surface), 0, 0)
+        cr = cairo.Context(surface)
+        cr.set_source_rgba(self.color.red, self.color.green, self.color.blue, self.color.alpha)
+        PangoCairo.show_layout(cr, layout)
         return surface

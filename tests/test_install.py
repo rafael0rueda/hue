@@ -74,3 +74,32 @@ def test_nothing_is_still_called_hue():
             ):
                 leftovers.append(f"{name}:{number}: {line.strip()}")
     assert leftovers == []
+
+
+def test_the_desktop_file_opens_what_the_open_dialog_does():
+    from tempera.file_io import OPEN_MIME_TYPES
+
+    desktop = (ROOT / "data" / "io.github.rafael0rueda.Tempera.desktop").read_text(encoding="utf-8")
+    line = next(line for line in desktop.splitlines() if line.startswith("MimeType="))
+    assert set(filter(None, line.removeprefix("MimeType=").split(";"))) == set(OPEN_MIME_TYPES)
+
+
+def test_version_matches_meson_and_the_newest_release_notes():
+    from tempera import VERSION
+    from tempera.main import metainfo_path, release_notes
+
+    meson = (ROOT / "meson.build").read_text(encoding="utf-8")
+    assert f"version: '{VERSION}'" in meson
+    version, notes = release_notes(metainfo_path(ROOT / "data"))
+    assert version == VERSION
+    assert notes.startswith("<p>")
+
+
+def test_release_notes_of_a_missing_or_broken_metainfo_are_none(tmp_path):
+    from tempera.main import release_notes
+
+    broken = tmp_path / "broken.xml"
+    broken.write_text("<component>", encoding="utf-8")
+    assert release_notes(None) is None
+    assert release_notes(tmp_path / "missing.xml") is None
+    assert release_notes(broken) is None

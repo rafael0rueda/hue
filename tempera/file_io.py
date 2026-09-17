@@ -21,6 +21,17 @@ EXTENSION_FORMATS = {
     ".ico": "ico",
 }
 FLATTEN_FORMATS = {"jpeg", "bmp"}
+# Readable image types, for the Open dialog and the desktop file. GIF and ICO
+# open like the rest; GIF just cannot be written back.
+OPEN_MIME_TYPES = (
+    "image/png",
+    "image/jpeg",
+    "image/bmp",
+    "image/tiff",
+    "image/webp",
+    "image/gif",
+    "image/vnd.microsoft.icon",
+)
 # The ICO format stores its size in a byte, where 0 means 256.
 ICO_MAX_SIZE = 256
 DEFAULT_EXTENSION = ".png"
@@ -31,7 +42,7 @@ def image_filters() -> Gio.ListStore:
     store = Gio.ListStore.new(Gtk.FileFilter)
 
     images = Gtk.FileFilter(name="Images")
-    for mime in ("image/png", "image/jpeg", "image/bmp", "image/tiff", "image/webp"):
+    for mime in OPEN_MIME_TYPES:
         images.add_mime_type(mime)
     store.append(images)
 
@@ -105,7 +116,9 @@ def load_surface(file: Gio.File) -> cairo.ImageSurface:
         stream.close(None)
 
     check_image_size(*declared)
-    return surface_from_pixbuf(loader.get_pixbuf())
+    # Cameras and phones store a photo sideways and say which way up it goes;
+    # ignoring that would open portrait photos lying on their side.
+    return surface_from_pixbuf(loader.get_pixbuf().apply_embedded_orientation())
 
 
 def load_document(file: Gio.File) -> Document:
@@ -115,24 +128,36 @@ def load_document(file: Gio.File) -> Document:
 
 
 def with_default_extension(file: Gio.File) -> Gio.File:
-    """The file to save to, with .png added when the name has no extension at all.
+    """The file to save to, with .png added unless the name ends in a format Tempera writes.
 
-    Without one the image would still be written as PNG, but under a name that
-    neither the file manager nor Tempera's own Open dialog recognises as an image.
+    Otherwise a name without an extension, or with one such as .gif, would get
+    PNG data under a name that says something else.
     """
-    name = file.get_basename()
-    if os.path.splitext(name)[1]:
+    if format_for(file) is not None:
         return file
-    return file.get_parent().get_child(name + DEFAULT_EXTENSION)
+    return file.get_parent().get_child(file.get_basename() + DEFAULT_EXTENSION)
 
 
-def format_for(file: Gio.File) -> str:
-    extension = os.path.splitext(file.get_path())[1].lower()
-    return EXTENSION_FORMATS.get(extension, "png")
+def save_as_name(file: Gio.File) -> str:
+    """The name Save As suggests for a file: its own, or as PNG if its format cannot be written."""
+    name = file.get_basename()
+    if format_for(file) is not None:
+        return name
+    return os.path.splitext(name)[0] + DEFAULT_EXTENSION
+
+
+def format_for(file: Gio.File) -> str | None:
+    """The format a file's extension asks for, or None if Tempera cannot write it."""
+    # The name rather than the path, which a network location does not have.
+    extension = os.path.splitext(file.get_basename())[1].lower()
+    return EXTENSION_FORMATS.get(extension)
 
 
 def save_document(document: Document, file: Gio.File, quality: int = 90) -> None:
     image_format = format_for(file)
+    if image_format is None:
+        extension = os.path.splitext(file.get_basename())[1] or "without an extension"
+        raise image_error(f"Cannot save images as {extension}")
     if image_format == "ico" and max(document.width, document.height) > ICO_MAX_SIZE:
         raise image_error(f"ICO images can be at most {ICO_MAX_SIZE} × {ICO_MAX_SIZE} px")
 

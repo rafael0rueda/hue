@@ -5,6 +5,8 @@ from gi.repository import Gdk
 
 from tempera.text import TextBox, font_size, font_without_size, with_font_size
 
+from pixels import pixel_at
+
 COLOR = Gdk.RGBA()
 COLOR.parse("#000000")
 
@@ -116,3 +118,57 @@ def test_font_size_round_trips_through_with_font_size():
 
 def test_font_without_size_drops_the_size():
     assert "24" not in font_without_size("Sans 24")
+
+
+# preedit
+
+
+def test_preedit_shows_at_the_caret_without_joining_the_text():
+    box = TextBox(0, 0, COLOR)
+    box.insert("ab")
+    box.caret = 1
+    plain_width, _height = box.size
+
+    box.set_preedit("にほ", 1)
+
+    assert box.text == "ab"
+    assert box.layout.get_text() == "aにほb"
+    assert box.size[0] > plain_width
+
+
+def test_the_caret_sits_inside_the_preedit():
+    box = TextBox(0, 0, COLOR)
+    box.insert("ab")
+    box.caret = 1
+    box.set_preedit("にほ", 0)
+    at_start, _y, _height = box.caret_rect()
+
+    box.set_preedit("にほ", 2)
+    at_end, _y, _height = box.caret_rect()
+
+    assert at_end > at_start
+
+
+def test_clearing_the_preedit_restores_the_layout():
+    box = TextBox(0, 0, COLOR)
+    box.insert("ab")
+    box.set_preedit("にほ", 2)
+    box.set_preedit("", 0)
+    assert box.layout.get_text() == "ab"
+
+
+def test_the_preedit_is_not_rendered_into_the_image():
+    box = TextBox(0, 0, COLOR)
+    box.insert("a")
+    without = box.render_surface()
+
+    box.set_preedit("にほんご", 4)
+    with_preedit = box.render_surface()
+
+    assert with_preedit.get_width() == without.get_width()
+
+
+def test_only_a_preedit_renders_nothing():
+    box = TextBox(0, 0, COLOR)
+    box.set_preedit("にほ", 2)
+    assert box.render_surface() is None

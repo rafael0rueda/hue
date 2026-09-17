@@ -44,6 +44,7 @@ CARET_BLINK_MS = 530
 # How far the pointer has to travel before a click inside a text box counts
 # as dragging it somewhere else rather than placing the caret.
 MOVE_THRESHOLD = 4
+CUT_OFF_MESSAGE = f"Part of the image was cut off, as a canvas can be at most {MAX_SIZE} × {MAX_SIZE} px"
 # Arrow-key nudge for a selection or floating paste, in image pixels; Shift steps further.
 NUDGE_STEP = 1
 NUDGE_STEP_FAST = 10
@@ -180,8 +181,8 @@ class Canvas(Gtk.DrawingArea):
         # The pointer moved over (or left) the canvas, in image-pixel coordinates.
         "pointer-moved": (GObject.SignalFlags.RUN_FIRST, None, (float, float)),
         "pointer-left": (GObject.SignalFlags.RUN_FIRST, None, ()),
-        # Something was dropped on the canvas but could not be read as an image.
-        "drop-failed": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        # Something worth telling the user, such as a drop that could not be read.
+        "message": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
     }
 
     def __init__(self, document: Document, colors: ColorState):
@@ -250,6 +251,7 @@ class Canvas(Gtk.DrawingArea):
         self._im = Gtk.IMMulticontext()
         self._im.set_client_widget(self)
         self._im.connect("commit", self._on_im_commit)
+        self._im.connect("preedit-changed", self._on_im_preedit_changed)
 
         drop = Gtk.DropTarget.new(Gdk.Texture, Gdk.DragAction.COPY)
         drop.set_gtypes([Gdk.Texture, Gdk.FileList, Gio.File])
@@ -512,6 +514,11 @@ class Canvas(Gtk.DrawingArea):
     def is_typing(self) -> bool:
         return self._text is not None
 
+    @property
+    def has_pending_floating(self) -> bool:
+        """Whether landing what floats would change the image: a paste, or text with something typed."""
+        return self._paste is not None or (self._text is not None and bool(self._text.text))
+
     def _floating_bounds(self) -> tuple[float, float, int, int] | None:
         """Where the pending paste or text sits, or None when nothing floats."""
         if self._paste is not None:
@@ -565,12 +572,14 @@ class Canvas(Gtk.DrawingArea):
         if self._paste is None:
             return False
         paste, self._paste = self._paste, None
-        self._document.paste(
+        cut_off = self._document.paste(
             paste.rendered(),
             round(paste.x),
             round(paste.y),
             erase=paste.source,
         )
+        if cut_off:
+            self.emit("message", CUT_OFF_MESSAGE)
         self._sync_content_size()
         self.queue_draw()
         self.emit("floating-changed")
@@ -602,9 +611,11 @@ class Canvas(Gtk.DrawingArea):
         if self._text is None:
             return False
         text, self._text = self._text, None
+        # Only what the input method has committed lands; a half-composed
+        # word does not.
         surface = text.render_surface()
-        if surface is not None:
-            self._document.paste(surface, round(text.x), round(text.y))
+        if surface is not None and self._document.paste(surface, round(text.x), round(text.y)):
+            self.emit("message", CUT_OFF_MESSAGE)
         self._end_typing()
         return True
 
@@ -620,6 +631,7 @@ class Canvas(Gtk.DrawingArea):
         self._text_moved = False
         self._stop_blink()
         self._im.focus_out()
+        self._im.reset()
         self._keys.set_im_context(None)
         self._sync_content_size()
         self.queue_draw()
@@ -655,6 +667,14 @@ class Canvas(Gtk.DrawingArea):
         if self._text is None:
             return
         self._text.insert(text)
+        self._refresh_text()
+
+    def _on_im_preedit_changed(self, im) -> None:
+        """Show what an input method is still composing, such as Japanese before it is converted."""
+        if self._text is None:
+            return
+        preedit, _attributes, cursor = im.get_preedit_string()
+        self._text.set_preedit(preedit, cursor)
         self._refresh_text()
 
     def _on_key_pressed(self, controller, keyval, keycode, state) -> bool:
@@ -729,7 +749,7 @@ class Canvas(Gtk.DrawingArea):
                 return False
         except GLib.Error as error:
             # An unreadable or oversized file, or a format GdkPixbuf does not know.
-            self.emit("drop-failed", error.message)
+            self.emit("message", error.message)
             return False
         # Drop where the pointer let go, centred on the pasted image.
         self.begin_paste(surface, x - surface.get_width() / 2, y - surface.get_height() / 2)
@@ -862,6 +882,9 @@ class Canvas(Gtk.DrawingArea):
 
         if self._text is not None:
             if self._text.contains(start_x, start_y, TEXT_PADDING):
+                # A click moves the caret, which leaves any half-composed word behind.
+                self._im.reset()
+                self._text.set_preedit("", 0)
                 self._text_origin = (self._text.x, self._text.y)
                 self._text_moved = False
                 self.grab_focus()

@@ -14,6 +14,7 @@ from .file_io import (
     format_for,
     image_filters,
     load_document,
+    save_as_name,
     save_document,
     with_default_extension,
 )
@@ -60,7 +61,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         self.canvas.connect("zoom-changed", self._on_zoom_changed)
         self.canvas.connect("pointer-moved", self._on_pointer_moved)
         self.canvas.connect("pointer-left", lambda *_: self._cursor_label.set_label(""))
-        self.canvas.connect("drop-failed", lambda _canvas, message: self.show_toast(message))
+        self.canvas.connect("message", lambda _canvas, message: self.show_toast(message))
         self._closing = False
         self._typing = False
         self._syncing_size = False
@@ -578,9 +579,10 @@ class TemperaWindow(Adw.ApplicationWindow):
         self.toasts.add_toast(Adw.Toast(title=message, use_markup=False))
 
     def _confirm_discard(self, proceed) -> None:
-        self.canvas.commit_floating()
+        # A paste or text still floating counts as a change, but is not landed
+        # yet: Cancel has to leave the image exactly as it was.
         document = self.canvas.document
-        if not document.modified:
+        if not document.modified and not self.canvas.has_pending_floating:
             proceed()
             return
 
@@ -721,16 +723,22 @@ class TemperaWindow(Adw.ApplicationWindow):
         # What gets written should match what is on screen.
         self.canvas.commit_floating()
         document = self.canvas.document
-        if document.file is None:
+        if document.file is None or format_for(document.file) is None:
+            # Never saved, or opened from a format such as GIF that Tempera
+            # cannot write back: ask where, rather than overwrite it as PNG.
             self._save_as(then)
             return
-        self._write(document.file, then)
+        # Ctrl+S keeps the quality already chosen; only Save As asks for it.
+        self._write_now(document.file, then, self._last_jpeg_quality)
 
     def _save_as(self, then=None) -> None:
         self.canvas.commit_floating()
         document = self.canvas.document
         dialog = Gtk.FileDialog(title="Save Image", filters=image_filters())
-        dialog.set_initial_name(document.title if document.file else "Untitled.png")
+        if document.file is None:
+            dialog.set_initial_name("Untitled.png")
+        else:
+            dialog.set_initial_name(save_as_name(document.file))
 
         def on_done(source, result):
             try:
@@ -817,8 +825,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         # With nothing to ask about, let this close go ahead. Calling close()
         # from inside the handler instead does nothing, since GTK ignores a
         # close while it is still deciding on this one.
-        self.canvas.commit_floating()
-        if not self.canvas.document.modified:
+        if not self.canvas.document.modified and not self.canvas.has_pending_floating:
             return False
 
         def close():
