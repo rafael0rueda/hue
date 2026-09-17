@@ -190,6 +190,14 @@ class HueWindow(Adw.ApplicationWindow):
         zoom_button.add_css_class("flat")
         zoom_button.set_valign(Gtk.Align.CENTER)
         zoom_button.set_action_name("win.zoom-reset")
+        # Scrolling over the zoom level steps through the zoom presets. Discrete,
+        # so a touchpad swipe moves one level at a time rather than racing.
+        zoom_scroll = Gtk.EventControllerScroll(
+            flags=Gtk.EventControllerScrollFlags.VERTICAL
+            | Gtk.EventControllerScrollFlags.DISCRETE
+        )
+        zoom_scroll.connect("scroll", self._on_zoom_label_scroll)
+        zoom_button.add_controller(zoom_scroll)
         bar.append(zoom_button)
         self._on_zoom_changed(self.canvas, self.canvas.zoom)
 
@@ -501,6 +509,13 @@ class HueWindow(Adw.ApplicationWindow):
     def _on_resize_preview(self, canvas, width: int, height: int) -> None:
         """Count out the pending size while a resize grip is being dragged."""
         self._canvas_size_label.set_label(f"{width} × {height} px")
+
+    def _on_zoom_label_scroll(self, controller, dx: float, dy: float) -> bool:
+        if dy < 0:
+            self.canvas.zoom_in()
+        elif dy > 0:
+            self.canvas.zoom_out()
+        return Gdk.EVENT_STOP
 
     def _on_zoom_changed(self, canvas, zoom: float) -> None:
         self._zoom_label.set_label(f"{round(zoom * 100)}%")

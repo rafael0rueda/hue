@@ -195,3 +195,14 @@ def test_unsaved_changes_are_asked_about_before_closing(application, window):
     settle()
     assert window in application.get_windows()
     assert isinstance(window.get_visible_dialog(), Adw.AlertDialog)
+
+
+def test_scrolling_over_the_zoom_level_steps_the_zoom(window):
+    window._on_zoom_label_scroll(None, 0, -1)
+    zoomed_in = window.canvas.zoom
+    assert zoomed_in > 1.0
+    assert window._zoom_label.get_label() == f"{round(zoomed_in * 100)}%"
+
+    window._on_zoom_label_scroll(None, 0, 1)
+    window._on_zoom_label_scroll(None, 0, 1)
+    assert window.canvas.zoom < 1.0

@@ -134,7 +134,7 @@ twenty.
 `Ctrl`+scroll zooms around the pointer, so whatever is under it stays put; `Ctrl++` and
 `Ctrl+-` step through the usual levels between 10% and 800%, and `Ctrl+0` — or clicking
 the zoom level in the bottom bar — goes back to 100%. The same three are in the main
-menu. Every tool keeps working at any zoom, and from 100% up each image pixel shows as
+menu, and scrolling over the zoom level in the bottom bar steps it up or down. Every tool keeps working at any zoom, and from 100% up each image pixel shows as
 a crisp square, which makes pixel-level touch-ups with the pencil easy. The bottom bar
 also shows which image pixel the pointer is over.
 
