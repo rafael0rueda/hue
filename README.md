@@ -96,6 +96,7 @@ canvas or copy from Files, all of which reach it through the desktop's file port
 | Fill          | `F` | Flood fill, with a tolerance slider for how far it spreads           |
 | Colour picker | `K` | Picks the colour under the cursor                                    |
 | Select        | `S` | Rectangle to move, copy or cut                                       |
+| Lasso select  | `Shift+S` | Any shape drawn by hand, to move, copy or cut                  |
 
 The **Shapes** tool's options hold a grid of shapes, and each shape has its own key,
 which also picks up the tool.
@@ -277,7 +278,15 @@ move, the gap and the pixels in their new place, is a single `Ctrl+Z`.
 Because a drag that starts inside the rectangle moves it, press `Esc` first when what
 you want is to select a different area that overlaps the current one.
 
-With the select tool in hand, a selection has eight handles around it. Dragging one
+The lasso (`Shift+S`) selects any shape: hold the button down and draw around what you
+want, and letting go closes the outline back to where it began. Everything above then
+follows that outline rather than the rectangle around it: only the pixels inside it
+move, copy, cut or clear, a move leaves a gap of the same shape, and the pixels copied
+to the clipboard are transparent outside it. **Crop to Selection** keeps the rectangle
+around the outline and makes what lies outside the outline transparent. The outline is
+hard-edged, taking whole pixels, so nothing half-moved is left along its edge.
+
+With the select tool or the lasso in hand, a selection has eight handles around it. Dragging one
 stretches or squashes the selected pixels, again with `Ctrl` to leave the original in
 place; the stretch keeps hard edges hard rather than blurring them. A floating paste
 has the same handles, so a screenshot can be scaled down before it lands. The arrow
@@ -289,9 +298,9 @@ Selection** in the main menu cuts the canvas down to just the selected rectangle
 
 The selection outlives the tool that made it: `Ctrl+C` copies just that rectangle
 rather than the whole canvas, `Ctrl+X` cuts it out and `Delete` clears it to white
-without touching the clipboard, whichever tool is in hand. Only the select tool picks
-the pixels up, though — with a brush selected you paint over them as usual. `Esc`, or
-a click outside the rectangle while the select tool is in hand, drops the selection.
+without touching the clipboard, whichever tool is in hand. Only the select tool and the
+lasso pick the pixels up, though — with a brush selected you paint over them as usual. `Esc`, or
+a click outside the selection while the select tool or the lasso is in hand, drops it.
 
 ## Rotating and flipping
 

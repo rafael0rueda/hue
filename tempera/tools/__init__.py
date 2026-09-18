@@ -6,6 +6,7 @@ from .base import Tool, ToolContext, draw_marquee
 from .brush import BrushTool
 from .eraser import EraserTool
 from .fill import TOLERANCE as DEFAULT_TOLERANCE, FillTool
+from .lasso import LassoTool
 from .pencil import PencilTool
 from .picker import PickerTool
 from .select import SelectTool
@@ -22,6 +23,7 @@ TOOL_CLASSES = [
     FillTool,
     PickerTool,
     SelectTool,
+    LassoTool,
 ]
 
 SHAPES_TOOL_ID = ShapesTool.id
@@ -31,6 +33,8 @@ ERASER_TOOL_ID = EraserTool.id
 FILL_TOOL_ID = FillTool.id
 TEXT_TOOL_ID = TextTool.id
 SELECT_TOOL_ID = SelectTool.id
+# The tools that pick out part of the image, and can grab it to move it.
+SELECTION_TOOL_IDS = {SelectTool.id, LassoTool.id}
 
 
 def create_tools() -> dict[str, Tool]:
@@ -54,5 +58,6 @@ __all__ = [
     "DEFAULT_TOLERANCE",
     "TEXT_TOOL_ID",
     "SELECT_TOOL_ID",
+    "SELECTION_TOOL_IDS",
     "create_tools",
 ]

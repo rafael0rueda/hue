@@ -35,6 +35,7 @@ TOOL_KEYS = {
     "fill": "f",
     "picker": "k",
     "select": "s",
+    "lasso": "<Shift>s",
 }
 
 # Each shape has a key that also takes up the Shapes tool, so the Shapes
@@ -101,7 +102,11 @@ SHORTCUT_GROUPS: list[tuple[str, list[Shortcut]]] = [
     (
         _("Tools"),
         [
-            Shortcut(f"win.tool::{tool.id}", tool.label, tuple(TOOL_KEYS.get(tool.id, ())))
+            Shortcut(
+                f"win.tool::{tool.id}",
+                tool.label,
+                (TOOL_KEYS[tool.id],) if tool.id in TOOL_KEYS else (),
+            )
             for tool in TOOL_CLASSES
         ],
     ),

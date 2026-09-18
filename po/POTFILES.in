@@ -17,6 +17,7 @@ tempera/tools/curve.py
 tempera/tools/ellipse.py
 tempera/tools/eraser.py
 tempera/tools/fill.py
+tempera/tools/lasso.py
 tempera/tools/line.py
 tempera/tools/pencil.py
 tempera/tools/picker.py

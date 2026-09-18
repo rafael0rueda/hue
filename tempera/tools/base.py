@@ -35,6 +35,8 @@ class ToolContext:
     # How close, in image pixels, a click must land to hit a point already
     # placed, such as the first corner of a polygon being closed.
     reach: float = 4.0
+    # Hands a hand-drawn outline to the canvas as the selection.
+    select_outline: Callable[[list[tuple[float, float]]], None] | None = None
 
     @property
     def color(self) -> Gdk.RGBA:
@@ -52,14 +54,37 @@ def set_source(cr: cairo.Context, color: Gdk.RGBA) -> None:
 def draw_marquee(cr: cairo.Context, x: float, y: float, width: float, height: float) -> None:
     """The dashed outline of a selection: black over white, so it reads on any artwork."""
     cr.save()
-    cr.set_line_width(1)
-    cr.rectangle(x + 0.5, y + 0.5, max(width - 1, 0), max(height - 1, 0))
+    # Half a screen pixel in from the edge, so the line lands on whole pixels.
+    half = 0.5 / cr.user_to_device_distance(1, 0)[0]
+    cr.rectangle(x + half, y + half, max(width - 2 * half, 0), max(height - 2 * half, 0))
+    _stroke_marquee(cr)
+    cr.restore()
+
+
+def draw_outline_marquee(cr: cairo.Context, outline, closed: bool = True) -> None:
+    """The same dashes, along a hand-drawn outline rather than a rectangle."""
+    if len(outline) < 2:
+        return
+    cr.save()
+    cr.move_to(*outline[0])
+    for point in outline[1:]:
+        cr.line_to(*point)
+    if closed:
+        cr.close_path()
+    _stroke_marquee(cr)
+    cr.restore()
+
+
+def _stroke_marquee(cr: cairo.Context) -> None:
+    # One screen pixel wide and dashed in screen pixels, whatever the zoom.
+    x_scale, _y_scale = cr.user_to_device_distance(1, 0)
+    cr.set_line_width(1 / x_scale)
+    cr.set_line_join(cairo.LINE_JOIN_ROUND)
     cr.set_source_rgb(1, 1, 1)
     cr.stroke_preserve()
-    cr.set_dash([4, 4])
+    cr.set_dash([4 / x_scale, 4 / x_scale])
     cr.set_source_rgb(0, 0, 0)
     cr.stroke()
-    cr.restore()
 
 
 class Tool:

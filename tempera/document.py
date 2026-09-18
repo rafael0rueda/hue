@@ -55,6 +55,15 @@ def crop_surface(
     return dst
 
 
+def keep_inside(surface: cairo.ImageSurface, mask: cairo.ImageSurface) -> None:
+    """Make every pixel outside the mask transparent, in place."""
+    cr = cairo.Context(surface)
+    # Keeps the pixels as much as the mask covers them, and no more.
+    cr.set_operator(cairo.OPERATOR_DEST_IN)
+    cr.set_source_surface(mask, 0, 0)
+    cr.paint()
+
+
 def copy_surface(src: cairo.ImageSurface) -> cairo.ImageSurface:
     dst = cairo.ImageSurface(cairo.FORMAT_ARGB32, src.get_width(), src.get_height())
     cr = cairo.Context(dst)
@@ -424,21 +433,41 @@ class Document(GObject.Object):
         """Mirror the whole canvas left-right or top-bottom."""
         self._replace_surface(self._flipped_surface(horizontal))
 
-    def crop_to(self, x: int, y: int, width: int, height: int) -> None:
-        """Shrink the canvas to one rectangle of itself, discarding the rest."""
-        self._replace_surface(crop_surface(self.surface, x, y, width, height))
+    def crop_to(
+        self, x: int, y: int, width: int, height: int, mask: cairo.ImageSurface | None = None
+    ) -> None:
+        """Shrink the canvas to one rectangle of itself, discarding the rest.
 
-    def _fill_rect(self, rect: tuple[int, int, int, int], fill) -> None:
+        With a mask the size of the rectangle, what lies outside the mask goes
+        transparent, so cropping to a hand-drawn outline keeps only its inside.
+        """
+        surface = crop_surface(self.surface, x, y, width, height)
+        if mask is not None:
+            keep_inside(surface, mask)
+        self._replace_surface(surface)
+
+    def _fill_rect(
+        self, rect: tuple[int, int, int, int], fill, mask: cairo.ImageSurface | None = None
+    ) -> None:
         cr = cairo.Context(self.surface)
         cr.set_operator(cairo.OPERATOR_SOURCE)
         cr.set_source_rgba(*fill)
-        cr.rectangle(*rect)
-        cr.fill()
+        if mask is None:
+            cr.rectangle(*rect)
+            cr.fill()
+        else:
+            # Only through the mask, laid over the rectangle's corner.
+            cr.mask_surface(mask, rect[0], rect[1])
 
-    def erase(self, rect: tuple[int, int, int, int], fill=(1.0, 1.0, 1.0, 1.0)) -> None:
-        """Paint one rectangle over with the colour the canvas is made of."""
+    def erase(
+        self,
+        rect: tuple[int, int, int, int],
+        fill=(1.0, 1.0, 1.0, 1.0),
+        mask: cairo.ImageSurface | None = None,
+    ) -> None:
+        """Paint one rectangle, or the masked part of it, with the colour the canvas is made of."""
         self.begin_change()
-        self._fill_rect(rect, fill)
+        self._fill_rect(rect, fill, mask)
         self.commit_change()
 
     def paste(
@@ -447,6 +476,7 @@ class Document(GObject.Object):
         x: int = 0,
         y: int = 0,
         erase: tuple[int, int, int, int] | None = None,
+        erase_mask: cairo.ImageSurface | None = None,
     ) -> bool:
         """Stamp an image onto the canvas, growing it if the image runs off the edge.
 
@@ -466,7 +496,7 @@ class Document(GObject.Object):
         if erase is not None:
             # Where a moved selection came from, left the same white a bigger
             # canvas is made of.
-            self._fill_rect(erase, (1.0, 1.0, 1.0, 1.0))
+            self._fill_rect(erase, (1.0, 1.0, 1.0, 1.0), erase_mask)
         cr = cairo.Context(self.surface)
         cr.set_source_surface(image, x, y)
         cr.paint()
