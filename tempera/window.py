@@ -6,7 +6,7 @@ from __future__ import annotations
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 from . import APP_NAME, interface_size, shortcuts
-from .canvas import Canvas, CanvasFrame
+from .canvas import PIXEL_GRID_ZOOM, Canvas, CanvasFrame
 from .clipboard import has_image, read_image, texture_from_surface
 from .color import MAX_RECENT_COLORS, ColorBar, ColorState, PaletteLayout, Swatch, describe, rgba
 from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_SIZE, Document, new_surface
@@ -30,7 +30,14 @@ from .settings import (
 from .preferences import PreferencesDialog
 from .shortcuts_dialog import ShortcutsDialog
 from .text import FONT_SIZE_RANGE, font_size, font_without_size, with_font_size
-from .tools import DEFAULT_SHAPE, SHAPE_CLASSES, SHAPE_IDS, SHAPES_TOOL_ID, TOOL_CLASSES
+from .tools import (
+    DEFAULT_SHAPE,
+    DENSITY_RANGE,
+    SHAPE_CLASSES,
+    SHAPE_IDS,
+    SHAPES_TOOL_ID,
+    TOOL_CLASSES,
+)
 
 # Actions that edit or replace the image. A stroke, move or resize in progress
 # holds on to the image it started on, so these wait until the button is let go.
@@ -198,6 +205,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         view_section.append(_("Zoom Out"), "win.zoom-out")
         view_section.append(_("Reset Zoom"), "win.zoom-reset")
         view_section.append(_("Zoom to Fit"), "win.zoom-fit")
+        view_section.append(_("Show Pixel Grid"), "win.pixel-grid")
         palette_menu = Gio.Menu()
         palette_menu.append(_("Bottom"), "win.palette-position::bottom")
         palette_menu.append(_("Left"), "win.palette-position::left")
@@ -420,6 +428,24 @@ class TemperaWindow(Adw.ApplicationWindow):
         self._tool_options.add_named(tolerance_box, "fill")
         self._show_tolerance(self.canvas.fill_tolerance)
 
+        density_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        density_label = Gtk.Label(label=_("Density"), xalign=0)
+        density_label.add_css_class("caption")
+        density_box.append(density_label)
+        self._density_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, *DENSITY_RANGE, 1
+        )
+        self._density_scale.set_value(self.canvas.airbrush_density)
+        self._density_scale.set_draw_value(True)
+        self._density_scale.set_tooltip_text(_("How thickly the airbrush sprays"))
+        self._density_scale.update_property([Gtk.AccessibleProperty.LABEL], [_("Density")])
+        self._density_scale.connect(
+            "value-changed",
+            lambda scale: setattr(self.canvas, "airbrush_density", int(scale.get_value())),
+        )
+        density_box.append(self._density_scale)
+        self._tool_options.add_named(density_box, "airbrush")
+
         # A caption of our own rather than a GtkFontDialogButton, whose label
         # grows the sidebar to fit whatever font name it is showing. It leaves
         # the size out, because that is what the slider above is for.
@@ -511,6 +537,12 @@ class TemperaWindow(Adw.ApplicationWindow):
         shape_action.connect("change-state", self._unless_dragging(self._on_shape_changed))
         self.add_action(shape_action)
 
+        grid_action = Gio.SimpleAction.new_stateful(
+            "pixel-grid", None, GLib.Variant.new_boolean(False)
+        )
+        grid_action.connect("change-state", self._on_pixel_grid_changed)
+        self.add_action(grid_action)
+
         palette_action = Gio.SimpleAction.new_stateful(
             "palette-position",
             GLib.VariantType.new("s"),
@@ -560,6 +592,16 @@ class TemperaWindow(Adw.ApplicationWindow):
         action.set_state(value)
         self.lookup_action("tool").change_state(GLib.Variant.new_string(SHAPES_TOOL_ID))
         self._sync_tool_options()
+
+    def _on_pixel_grid_changed(self, action, value: GLib.Variant) -> None:
+        action.set_state(value)
+        self.canvas.show_pixel_grid = value.get_boolean()
+        if value.get_boolean() and not self.canvas.pixel_grid_visible:
+            self.show_toast(
+                _("The pixel grid shows from {zoom}% zoom").format(
+                    zoom=round(PIXEL_GRID_ZOOM * 100)
+                )
+            )
 
     def _on_palette_position_changed(self, action, value: GLib.Variant) -> None:
         position = value.get_string()
@@ -671,6 +713,8 @@ class TemperaWindow(Adw.ApplicationWindow):
             page = "eraser"
         elif canvas.supports_tolerance:
             page = "fill"
+        elif canvas.supports_density:
+            page = "airbrush"
         elif canvas.supports_font:
             page = "text"
         self._tool_options.set_visible_child_name(page)
@@ -1232,6 +1276,11 @@ class TemperaWindow(Adw.ApplicationWindow):
             load_setting("fill-tolerance"), self.canvas.fill_tolerance, TOLERANCE_RANGE
         )
         self._tolerance_scale.set_value(self.canvas.fill_tolerance)
+        self._density_scale.set_value(
+            _whole(load_setting("airbrush-density"), self.canvas.airbrush_density, DENSITY_RANGE)
+        )
+        if load_setting("pixel-grid") == "1":
+            self.lookup_action("pixel-grid").change_state(GLib.Variant.new_boolean(True))
         self._last_jpeg_quality = _whole(load_setting("jpeg-quality"), 90, (1, 100))
         for key, attribute in (("primary-color", "primary"), ("secondary-color", "secondary")):
             spec = load_setting(key)
@@ -1255,6 +1304,8 @@ class TemperaWindow(Adw.ApplicationWindow):
                 "brush-size": self.canvas.brush_size,
                 "font": self.canvas.font,
                 "fill-tolerance": self.canvas.fill_tolerance,
+                "airbrush-density": self.canvas.airbrush_density,
+                "pixel-grid": "1" if self.canvas.show_pixel_grid else "0",
                 "jpeg-quality": self._last_jpeg_quality,
                 "primary-color": self.colors.primary.to_string(),
                 "secondary-color": self.colors.secondary.to_string(),

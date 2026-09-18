@@ -30,6 +30,8 @@ class ToolContext:
     erase_to_transparency: bool = False
     # How far from the color under the pointer a flood fill still spreads.
     tolerance: int = 32
+    # How thickly the airbrush sprays, from 1 to 100.
+    density: int = 50
     # How close, in image pixels, a click must land to hit a point already
     # placed, such as the first corner of a polygon being closed.
     reach: float = 4.0
@@ -65,6 +67,9 @@ class Tool:
     label = ""
     icon_name = ""
     mutates = True
+    # Above 0, the canvas calls repeat() this often (in ms) while the button is
+    # held, even when the pointer does not move.
+    repeat_ms = 0
 
     def press(self, ctx: ToolContext, x: float, y: float) -> None:
         pass
@@ -76,6 +81,9 @@ class Tool:
         pass
 
     def draw_preview(self, cr: cairo.Context, ctx: ToolContext) -> None:
+        pass
+
+    def repeat(self, ctx: ToolContext) -> None:
         pass
 
     # Tools that take several clicks, such as the polygon, stay in progress

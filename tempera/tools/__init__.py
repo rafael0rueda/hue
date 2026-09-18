@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Rafael Rueda
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from .airbrush import DEFAULT_DENSITY, DENSITY_RANGE, AirbrushTool
 from .base import Tool, ToolContext, draw_marquee
 from .brush import BrushTool
 from .eraser import EraserTool
@@ -14,6 +15,7 @@ from .text import TextTool
 TOOL_CLASSES = [
     PencilTool,
     BrushTool,
+    AirbrushTool,
     EraserTool,
     ShapesTool,
     TextTool,
@@ -23,6 +25,7 @@ TOOL_CLASSES = [
 ]
 
 SHAPES_TOOL_ID = ShapesTool.id
+AIRBRUSH_TOOL_ID = AirbrushTool.id
 SHAPE_IDS = [cls.id for cls in SHAPE_CLASSES]
 ERASER_TOOL_ID = EraserTool.id
 FILL_TOOL_ID = FillTool.id
@@ -43,6 +46,9 @@ __all__ = [
     "SHAPE_IDS",
     "DEFAULT_SHAPE",
     "SHAPES_TOOL_ID",
+    "AIRBRUSH_TOOL_ID",
+    "DEFAULT_DENSITY",
+    "DENSITY_RANGE",
     "ERASER_TOOL_ID",
     "FILL_TOOL_ID",
     "DEFAULT_TOLERANCE",

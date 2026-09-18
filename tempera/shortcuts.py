@@ -29,6 +29,7 @@ class Shortcut:
 TOOL_KEYS = {
     "pencil": "p",
     "brush": "b",
+    "airbrush": "a",
     "eraser": "e",
     "text": "t",
     "fill": "f",
@@ -41,7 +42,7 @@ TOOL_KEYS = {
 SHAPE_KEYS = {
     "line": "l",
     "curve": "c",
-    "arrow": "a",
+    "arrow": "w",
     "rectangle": "r",
     "rounded-rectangle": "u",
     "ellipse": "o",
@@ -94,6 +95,7 @@ SHORTCUT_GROUPS: list[tuple[str, list[Shortcut]]] = [
             Shortcut("win.zoom-out", _("Zoom Out"), ("<Control>minus", "<Control>KP_Subtract")),
             Shortcut("win.zoom-reset", _("Reset Zoom"), ("<Control>0", "<Control>KP_0")),
             Shortcut("win.zoom-fit", _("Zoom to Fit"), ("<Control>9", "<Control>KP_9")),
+            Shortcut("win.pixel-grid", _("Show Pixel Grid"), ("<Control>g",)),
         ],
     ),
     (

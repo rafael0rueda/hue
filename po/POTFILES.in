@@ -10,6 +10,7 @@ tempera/main.py
 tempera/preferences.py
 tempera/shortcuts.py
 tempera/shortcuts_dialog.py
+tempera/tools/airbrush.py
 tempera/tools/arrow.py
 tempera/tools/brush.py
 tempera/tools/curve.py

@@ -89,6 +89,7 @@ canvas or copy from Files, all of which reach it through the desktop's file port
 | ------------- | --- | -------------------------------------------------------------------- |
 | Pencil        | `P` | Hard-edged, no antialiasing                                          |
 | Brush         | `B` | Soft round stroke                                                    |
+| Airbrush      | `A` | Sprays dots across the brush size, and keeps spraying while held     |
 | Eraser        | `E` | Paints the secondary (background) colour, or rubs back to nothing    |
 | Shapes        |     | Nine shapes in one tool; see below                                   |
 | Text          | `T` | Type onto the canvas in any installed font                           |
@@ -103,7 +104,7 @@ which also picks up the tool.
 | ----------------- | --- | ---------------------------------------------------------------- |
 | Line              | `L` | Drag; `Shift` snaps it to 45° steps                              |
 | Curve             | `C` | Drag a line, then drag twice to bend it (`Enter` after one bend) |
-| Arrow             | `A` | Drag from tail to tip; the head grows with the size              |
+| Arrow             | `W` | Drag from tail to tip; the head grows with the size              |
 | Rectangle         | `R` | Drag; `Shift` draws a square                                     |
 | Rounded rectangle | `U` | Drag; `Shift` draws a square                                     |
 | Ellipse           | `O` | Drag; `Shift` draws a circle                                     |
@@ -127,8 +128,8 @@ is already there instead of replacing it. Colours picked lately gather in a seco
 beside the fixed palette, so a mixed colour is one click away next time.
 
 Each tool brings its own options under the size slider: the shapes and **Fill shape**
-for the Shapes tool, **Erase to nothing** for the eraser, a tolerance for the
-fill, and the font for the text tool.
+for the Shapes tool, **Density** for the airbrush, **Erase to nothing** for the eraser,
+a tolerance for the fill, and the font for the text tool.
 
 | Action                      | Shortcut                                         |
 | --------------------------- | ------------------------------------------------ |
@@ -144,6 +145,7 @@ fill, and the font for the text tool.
 | Undo / Redo                 | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`)          |
 | Zoom in / out / 100%        | `Ctrl++` / `Ctrl+-` / `Ctrl+0`, or `Ctrl`+scroll |
 | Zoom to fit                 | `Ctrl+9`                                         |
+| Show pixel grid             | `Ctrl+G`                                         |
 | Smaller / bigger brush      | `[` / `]`                                        |
 | Preferences                 | `Ctrl+,`                                         |
 | Keyboard shortcuts          | `Ctrl+?`                                         |
@@ -203,11 +205,17 @@ menu, and scrolling over the zoom level in the bottom bar steps it up or down. E
 a crisp square, which makes pixel-level touch-ups with the pencil easy. The bottom bar
 also shows which image pixel the pointer is over.
 
+**Show Pixel Grid** in the main menu (or `Ctrl+G`) draws a thin line between every two
+pixels from 400% zoom up; further out the lines would hide the picture. The grey lines
+show on light and dark colours alike, though they are faint on mid grey. The grid is
+only on screen and never saved into the image.
+
 ## What Tempera remembers
 
-The window size, the tool in hand, the brush and text sizes, the font, the fill
-tolerance, both colours with the ones picked lately, the JPEG quality, where the
-palette sits and the interface size are all kept in `~/.config/tempera/settings.ini` and put back the next
+The window size, the tool and shape in hand, the brush and text sizes, the font, the fill
+tolerance, the airbrush density, whether the pixel grid is on, both colours with the
+ones picked lately, the JPEG quality, where the palette sits and the interface size
+are all kept in `~/.config/tempera/settings.ini` and put back the next
 time. A **New image** can start transparent instead of white.
 
 ## Moving the palette

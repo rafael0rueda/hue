@@ -27,6 +27,7 @@ python.install_sources(
 python.install_sources(
   files(
     'tools/__init__.py',
+    'tools/airbrush.py',
     'tools/arrow.py',
     'tools/base.py',
     'tools/brush.py',

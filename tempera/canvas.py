@@ -17,6 +17,8 @@ from .i18n import _
 from .interface_size import scaled
 from .text import DEFAULT_FONT, TextBox
 from .tools import (
+    AIRBRUSH_TOOL_ID,
+    DEFAULT_DENSITY,
     DEFAULT_TOLERANCE,
     ERASER_TOOL_ID,
     FILL_TOOL_ID,
@@ -39,6 +41,9 @@ HANDLE_GRAB = 12
 # Room around the image so the grips sitting on its edge are fully visible.
 HANDLE_MARGIN = 8
 ZOOM_MIN = 0.1
+# The pixel grid shows from this zoom up; below it the lines would crowd out
+# the pixels they outline.
+PIXEL_GRID_ZOOM = 4.0
 ZOOM_MAX = 8.0
 # What Ctrl+Plus/Minus step through, and Ctrl+scroll rounds towards.
 ZOOM_PRESETS = [0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 8.0]
@@ -215,6 +220,8 @@ class Canvas(Gtk.DrawingArea):
         self.fill_shapes = False
         self.erase_to_transparency = False
         self.fill_tolerance = DEFAULT_TOLERANCE
+        self.airbrush_density = DEFAULT_DENSITY
+        self._show_pixel_grid = False
         self.font = DEFAULT_FONT
         self.zoom = 1.0
 
@@ -225,6 +232,8 @@ class Canvas(Gtk.DrawingArea):
         # The button that started a shape still waiting for more clicks; its
         # colours carry through every click until the shape lands.
         self._shape_button = Gdk.BUTTON_PRIMARY
+        # The timer that keeps the airbrush spraying while it is held still.
+        self._repeat_source = 0
         self._resize_handle: str | None = None
         self._pan_origin: tuple[float, float] | None = None
         self._pinch_zoom = 1.0
@@ -375,6 +384,24 @@ class Canvas(Gtk.DrawingArea):
     @property
     def supports_erase_mode(self) -> bool:
         return self.active_tool.id == ERASER_TOOL_ID
+
+    @property
+    def supports_density(self) -> bool:
+        return self.active_tool.id == AIRBRUSH_TOOL_ID
+
+    @property
+    def show_pixel_grid(self) -> bool:
+        return self._show_pixel_grid
+
+    @show_pixel_grid.setter
+    def show_pixel_grid(self, value: bool) -> None:
+        self._show_pixel_grid = value
+        self.queue_draw()
+
+    @property
+    def pixel_grid_visible(self) -> bool:
+        """Whether the grid is on and zoomed in far enough to be drawn."""
+        return self._show_pixel_grid and self.zoom >= PIXEL_GRID_ZOOM
 
     @property
     def supports_tolerance(self) -> bool:
@@ -1073,6 +1100,7 @@ class Canvas(Gtk.DrawingArea):
             fill_shapes=self.fill_shapes,
             erase_to_transparency=self.erase_to_transparency,
             tolerance=self.fill_tolerance,
+            density=self.airbrush_density,
             reach=scaled(POINT_REACH) / self.zoom,
             pick_color=lambda color, btn: self.emit("color-picked", color, btn),
             begin_text=self.begin_text,
@@ -1156,7 +1184,22 @@ class Canvas(Gtk.DrawingArea):
         if self.active_tool.mutates:
             self._document.begin_change()
         self.active_tool.press(self._drag_context, start_x, start_y)
+        if self.active_tool.repeat_ms:
+            self._repeat_source = GLib.timeout_add(self.active_tool.repeat_ms, self._on_repeat)
         self.queue_draw()
+
+    def _on_repeat(self) -> bool:
+        if self._drag_context is None:
+            self._repeat_source = 0
+            return GLib.SOURCE_REMOVE
+        self.active_tool.repeat(self._drag_context)
+        self.queue_draw()
+        return GLib.SOURCE_CONTINUE
+
+    def _stop_repeat(self) -> None:
+        if self._repeat_source:
+            GLib.source_remove(self._repeat_source)
+            self._repeat_source = 0
 
     def _on_drag_update(self, gesture, offset_x, offset_y):
         if self._drag_origin is None:
@@ -1244,6 +1287,7 @@ class Canvas(Gtk.DrawingArea):
             self._drag_origin = None
             return
 
+        self._stop_repeat()
         self._drag_context.constrain = bool(
             gesture.get_current_event_state() & Gdk.ModifierType.SHIFT_MASK
         )
@@ -1285,11 +1329,21 @@ class Canvas(Gtk.DrawingArea):
             cr.restore()
         cr.restore()
 
+        if self.pixel_grid_visible:
+            self._draw_pixel_grid(cr, image_width, image_height)
+
+        # One screen pixel wide at any zoom, rather than one image pixel, which
+        # zoomed in would cover the whole first row and column.
         outline = self.get_color()
+        cr.save()
+        cr.scale(1 / self.zoom, 1 / self.zoom)
         cr.set_source_rgba(outline.red, outline.green, outline.blue, 0.25)
         cr.set_line_width(1)
-        cr.rectangle(0.5, 0.5, image_width - 1, image_height - 1)
+        screen_width = round(image_width * self.zoom)
+        screen_height = round(image_height * self.zoom)
+        cr.rectangle(0.5, 0.5, screen_width - 1, screen_height - 1)
         cr.stroke()
+        cr.restore()
 
         accent = self._accent()
         if self._resize_size is not None:
@@ -1301,6 +1355,28 @@ class Canvas(Gtk.DrawingArea):
         if self._selection is not None:
             draw_marquee(cr, *self._selection.rect)
         self._draw_handles(cr, accent)
+        cr.restore()
+
+    def _draw_pixel_grid(self, cr: cairo.Context, image_width: int, image_height: int) -> None:
+        """A line between every two pixels, drawn on screen pixels so it stays one pixel thin."""
+        cr.save()
+        cr.rectangle(0, 0, image_width, image_height)
+        cr.clip()
+        # Only the lines in view: a large image has far more than the screen shows.
+        left, top, right, bottom = cr.clip_extents()
+        zoom = self.zoom
+        cr.scale(1 / zoom, 1 / zoom)
+        for x in range(max(1, int(left)), min(image_width, int(right) + 1)):
+            cr.move_to(round(x * zoom) + 0.5, top * zoom)
+            cr.line_to(round(x * zoom) + 0.5, bottom * zoom)
+        for y in range(max(1, int(top)), min(image_height, int(bottom) + 1)):
+            cr.move_to(left * zoom, round(y * zoom) + 0.5)
+            cr.line_to(right * zoom, round(y * zoom) + 0.5)
+        cr.set_line_width(1)
+        # A half-see-through grey darkens light pixels and lightens dark ones,
+        # so the lines show on both without hiding the colours between them.
+        cr.set_source_rgba(0.5, 0.5, 0.5, 0.45)
+        cr.stroke()
         cr.restore()
 
     @staticmethod
