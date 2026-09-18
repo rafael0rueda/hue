@@ -15,16 +15,17 @@
     </p>
     <p>Features:</p>
     <ul>
-      <li>Pencil, brush and eraser</li>
+      <li>Pencil, brush and eraser, which can rub back to transparency</li>
       <li>Line, rectangle and ellipse, filled or outlined, with Shift for squares, circles and 45° lines</li>
       <li>Text in any font installed on the system</li>
-      <li>Flood fill and colour picker</li>
+      <li>Flood fill with an adjustable tolerance, and a colour picker</li>
+      <li>Colours of any opacity, with the ones picked lately kept beside the palette</li>
       <li>Rectangular selection to move, copy, cut, stretch or crop to</li>
       <li>Paste screenshots and drop images straight onto the canvas</li>
-      <li>Zoom from 10% to 800%, with crisp pixels when zoomed in</li>
-      <li>Rotate and flip the whole image, and resize the canvas by dragging its edge</li>
+      <li>Resize the picture, or the canvas around it, and rotate or flip it</li>
+      <li>Zoom from 10% to 800% or to fit the window, with crisp pixels when zoomed in; pan with the middle mouse button or pinch on a touchpad</li>
       <li>Undo and redo history, and a list of recently opened files</li>
-      <li>Keyboard shortcuts you can change to suit you</li>
+      <li>Keyboard shortcuts you can change to suit you, and every action reachable from the keyboard</li>
       <li>A colour palette along the bottom, under the tools or beside the canvas</li>
     </ul>
     <p>
@@ -59,8 +60,12 @@
   </supports>
   <screenshots>
     <screenshot type="default">
-      <caption>The main window with a blank canvas</caption>
-      <image type="source" width="1120" height="800">https://raw.githubusercontent.com/rafael0rueda/tempera/v0.5.0/data/screenshots/main-window.png</image>
+      <caption>Painting a landscape with the brush</caption>
+      <image type="source" width="1120" height="800">https://raw.githubusercontent.com/rafael0rueda/tempera/v1.0.0/data/screenshots/main-window.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The dark style, with a selection and the fill tool's tolerance</caption>
+      <image type="source" width="1120" height="800">https://raw.githubusercontent.com/rafael0rueda/tempera/v1.0.0/data/screenshots/dark-style.png</image>
     </screenshot>
   </screenshots>
   <categories>
@@ -68,6 +73,29 @@
     <category>RasterGraphics</category>
   </categories>
   <releases>
+    <release version="1.0.0" date="2026-09-17">
+      <description>
+        <p>Tempera 1.0 rounds out the essentials of a paint program.</p>
+        <p>New features:</p>
+        <ul>
+          <li>Resize Image (Ctrl+R) stretches or shrinks the picture itself, in pixels or as a percentage</li>
+          <li>Zoom to Fit (Ctrl+9), and an image larger than the window opens fitted to it</li>
+          <li>Drag with the middle mouse button to move around the image, or pinch on a touchpad to zoom</li>
+          <li>Colours can be see-through, and the ones picked lately gather beside the palette</li>
+          <li>Each tool shows its own options: filled shapes, erasing to transparency, fill tolerance and the font</li>
+          <li>A new image can start transparent</li>
+          <li>The window size, tool, sizes, font, colours and JPEG quality are remembered</li>
+          <li>[ and ] make the brush smaller or bigger, and the bottom bar shows the size of a selection</li>
+        </ul>
+        <p>Improvements:</p>
+        <ul>
+          <li>Undo keeps only the part of the image an edit changed, so large photos keep their full history using far less memory</li>
+          <li>The sidebar keeps the same width whichever tool is in hand</li>
+          <li>Enlarging an image no longer leaves its right and bottom edges faded</li>
+          <li>Every release comes with a Flatpak bundle to download from GitHub</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.5.0" date="2026-09-17">
       <description>
         <p>Fixes and improvements:</p>

@@ -13,7 +13,19 @@ mkdir -p ~/.var/app/io.github.rafael0rueda.Tempera/config
 cp -r ~/.var/app/io.github.rafael0rueda.Hue/config/hue ~/.var/app/io.github.rafael0rueda.Tempera/config/tempera
 ```
 
-![Tempera's main window: the tool palette on the left, a blank 800 × 600 canvas in the middle, and the colour palette, pointer position, zoom level and canvas size along the bottom](data/screenshots/main-window.png)
+![Tempera's main window: the tool palette on the left with the brush selected, a painted landscape with a house, a tree and the sun on the canvas, and the colour palette with recently picked colours, zoom level and canvas size along the bottom](data/screenshots/main-window.png)
+
+## Installing a release
+
+Each [release](https://github.com/rafael0rueda/tempera/releases) has a Flatpak bundle
+attached. Download `Tempera-<version>-x86_64.flatpak` and install it for your user:
+
+```
+flatpak install --user Tempera-1.0.0-x86_64.flatpak
+```
+
+It runs on the GNOME 50 runtime, which Flatpak offers to fetch from Flathub if you do
+not have it yet. Installing a newer bundle the same way updates it.
 
 ## Requirements
 
@@ -164,9 +176,10 @@ leaves everything exactly as it was. `Ctrl+Q` closes every window, asking in eac
 that has unsaved changes.
 
 The title shows `•` while there are unsaved changes, and undoing back to the image as
-it was last saved clears it again. Undo keeps up to 50 steps, fewer for very large
-images, since each step is a full copy of the picture: a 4000 × 3000 photo keeps around
-twenty.
+it was last saved clears it again. Undo keeps up to 50 steps. Each step holds only the
+part of the picture that edit changed, so brush strokes on a large photo cost little; a
+step that changes the whole picture, such as a fill or a rotation, holds all of it, and
+the history gives up its oldest steps rather than use more than 1 GB.
 
 ## Zooming
 
