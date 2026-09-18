@@ -36,8 +36,7 @@ class ShapesTool(Tool):
 
     id = "shapes"
     label = _("Shapes")
-    # The sidebar shows whichever shape is in hand; this is the one it starts with.
-    icon_name = RectangleTool.icon_name
+    icon_name = "tempera-shapes-symbolic"
 
     def __init__(self):
         self.shapes: dict[str, Tool] = {cls.id: cls() for cls in SHAPE_CLASSES}

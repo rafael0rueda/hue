@@ -8,7 +8,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 from . import APP_NAME, interface_size, shortcuts
 from .canvas import Canvas, CanvasFrame
 from .clipboard import has_image, read_image, texture_from_surface
-from .color import MAX_RECENT_COLORS, ColorBar, ColorState, PaletteLayout, rgba
+from .color import MAX_RECENT_COLORS, ColorBar, ColorState, PaletteLayout, Swatch, describe, rgba
 from .document import DEFAULT_HEIGHT, DEFAULT_WIDTH, MAX_SIZE, Document, new_surface
 from .i18n import _
 from .file_io import (
@@ -341,9 +341,6 @@ class TemperaWindow(Adw.ApplicationWindow):
             button.set_action_name("win.tool")
             button.set_action_target_value(GLib.Variant.new_string(tool.id))
             tools.attach(button, index % 2, index // 2, 1, 1)
-            if tool.id == SHAPES_TOOL_ID:
-                # Shows the shape in hand, so the sidebar says what a drag will draw.
-                self._shapes_button = button
         sidebar.append(tools)
 
         sidebar.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
@@ -379,9 +376,23 @@ class TemperaWindow(Adw.ApplicationWindow):
             button.set_action_target_value(GLib.Variant.new_string(shape.id))
             shape_grid.attach(button, index % 3, index // 3, 1, 1)
         shape_box.append(shape_grid)
+        # The fill is the secondary colour, shown beside the option: white,
+        # the colour it starts as, would otherwise look like no fill at all.
+        fill_row = Gtk.Box(spacing=6)
+        # The check expands to push the swatch to the end; saying outright that
+        # the row does not stops that spreading up and widening the sidebar.
+        fill_row.set_hexpand(False)
         self._fill_check = _option_check(_("Fill shape"))
+        self._fill_check.set_hexpand(True)
         self._fill_check.connect("toggled", self._on_fill_toggled)
-        shape_box.append(self._fill_check)
+        fill_row.append(self._fill_check)
+        self._fill_swatch = Swatch(self.colors.secondary)
+        self._fill_swatch.set_valign(Gtk.Align.CENTER)
+        self._fill_swatch.connect("picked", lambda *_args: self._color_bar.choose(primary=False))
+        fill_row.append(self._fill_swatch)
+        shape_box.append(fill_row)
+        self.colors.connect("changed", lambda *_args: self._sync_fill_swatch())
+        self._sync_fill_swatch()
         self._tool_options.add_named(shape_box, "shape")
 
         self._erase_check = _option_check(_("Erase to nothing"))
@@ -547,7 +558,6 @@ class TemperaWindow(Adw.ApplicationWindow):
             return
         self.canvas.select_shape(shape_id)
         action.set_state(value)
-        self._shapes_button.set_icon_name(self.canvas.shapes.shape.icon_name)
         self.lookup_action("tool").change_state(GLib.Variant.new_string(SHAPES_TOOL_ID))
         self._sync_tool_options()
 
@@ -626,6 +636,13 @@ class TemperaWindow(Adw.ApplicationWindow):
         unit = _("pt") if self.canvas.supports_font else _("px")
         self._size_label.set_label(_("Size: {size} {unit}").format(size=size, unit=unit))
 
+    def _sync_fill_swatch(self) -> None:
+        color = self.colors.secondary
+        self._fill_swatch.color = color
+        self._fill_swatch.set_label_text(
+            _("Fill colour, the secondary colour: {color}").format(color=describe(color))
+        )
+
     def _on_fill_toggled(self, check: Gtk.CheckButton) -> None:
         self.canvas.fill_shapes = check.get_active()
 
@@ -649,6 +666,7 @@ class TemperaWindow(Adw.ApplicationWindow):
             page = "shape"
             # A line, arrow or curve has no inside to fill.
             self._fill_check.set_sensitive(canvas.shapes.fillable)
+            self._fill_swatch.set_sensitive(canvas.shapes.fillable)
         elif canvas.supports_erase_mode:
             page = "eraser"
         elif canvas.supports_tolerance:

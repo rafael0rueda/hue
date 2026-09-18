@@ -579,15 +579,25 @@ def test_picking_a_shape_takes_up_the_shapes_tool(window):
     window.activate_action("win.shape", GLib.Variant.new_string("star"))
     assert window.canvas.active_tool.id == "shapes"
     assert window.canvas.shapes.shape.id == "star"
-    assert window._shapes_button.get_icon_name() == "tempera-star-symbolic"
     assert window._tool_options.get_visible_child_name() == "shape"
 
 
 def test_fill_is_offered_only_for_shapes_with_an_inside(window):
     window.activate_action("win.shape", GLib.Variant.new_string("line"))
     assert not window._fill_check.get_sensitive()
+    assert not window._fill_swatch.get_sensitive()
     window.activate_action("win.shape", GLib.Variant.new_string("ellipse"))
     assert window._fill_check.get_sensitive()
+    assert window._fill_swatch.get_sensitive()
+
+
+def test_the_fill_swatch_shows_the_secondary_colour(window):
+    assert window._fill_swatch.color.equal(window.colors.secondary)
+    window.colors.secondary = rgba("#3584e4")
+    assert window._fill_swatch.color.equal(rgba("#3584e4"))
+    assert "Blue" in window._fill_swatch.get_tooltip_text()
+    window.colors.swap()
+    assert window._fill_swatch.color.equal(window.colors.secondary)
 
 
 def test_an_unknown_shape_is_ignored(window):

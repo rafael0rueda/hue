@@ -157,8 +157,8 @@ class ColorBar(Gtk.Box):
         # Sized apart from the palette when the interface is drawn bigger.
         self._primary_swatch.add_css_class("tempera-swatch-current")
         self._secondary_swatch.add_css_class("tempera-swatch-current")
-        self._primary_swatch.connect("picked", lambda *_args: self._choose(primary=True))
-        self._secondary_swatch.connect("picked", lambda *_args: self._choose(primary=False))
+        self._primary_swatch.connect("picked", lambda *_args: self.choose(primary=True))
+        self._secondary_swatch.connect("picked", lambda *_args: self.choose(primary=False))
 
         current = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         current.set_halign(Gtk.Align.CENTER)
@@ -268,7 +268,8 @@ class ColorBar(Gtk.Box):
         )
         self._refresh_recent()
 
-    def _choose(self, primary: bool) -> None:
+    def choose(self, primary: bool) -> None:
+        """Open the colour dialog for the primary or the secondary colour."""
         # With alpha, so a colour can be made see-through; the dialog's own
         # custom section is where a hex value can be typed in.
         dialog = Gtk.ColorDialog(with_alpha=True, title=_("Choose a color"))

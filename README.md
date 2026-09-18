@@ -97,7 +97,7 @@ canvas or copy from Files, all of which reach it through the desktop's file port
 | Select        | `S` | Rectangle to move, copy or cut                                       |
 
 The **Shapes** tool's options hold a grid of shapes, and each shape has its own key,
-which also picks up the tool. The tool's button shows the shape in hand.
+which also picks up the tool.
 
 | Shape             | Key | How to draw it                                                   |
 | ----------------- | --- | ---------------------------------------------------------------- |
@@ -111,7 +111,8 @@ which also picks up the tool. The tool's button shows the shape in hand.
 | Star              | `H` | Drag; `Shift` makes it regular                                   |
 | Polygon           | `G` | Click each corner; click the first one again, or the last twice  |
 
-**Fill shape** fills the closed shapes with the secondary colour. The polygon and the
+**Fill shape** fills the closed shapes with the secondary colour, which the swatch
+beside it shows; click the swatch to change it. The polygon and the
 curve stay open for more clicks until they are finished: `Enter` lands one early, `Esc`
 drops it, and picking another tool or shape lands it. Either way it is a single step
 to undo.
