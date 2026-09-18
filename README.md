@@ -4,15 +4,6 @@ A straightforward raster paint application for Fedora / GNOME, in the spirit of 
 classic Windows Paint. Built with GTK4 and libadwaita, it follows the system light/dark
 preference and accent colour automatically, and works entirely offline.
 
-Tempera used to be called Hue. The first time it starts, it copies your settings,
-shortcuts and recent files over from `~/.config/hue/`. The Flatpak cannot see the old
-app's data, so copy it once by hand before starting Tempera:
-
-```
-mkdir -p ~/.var/app/io.github.rafael0rueda.Tempera/config
-cp -r ~/.var/app/io.github.rafael0rueda.Hue/config/hue ~/.var/app/io.github.rafael0rueda.Tempera/config/tempera
-```
-
 ![Tempera's main window: the tool palette on the left with the brush selected, a painted landscape with a house, a tree and the sun on the canvas, and the colour palette with recently picked colours, zoom level and canvas size along the bottom](data/screenshots/main-window.png)
 
 ## Installing a release

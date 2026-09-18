@@ -55,7 +55,6 @@ def test_nothing_is_still_called_hue():
             "Hue is now called Tempera",
             "carried over from Hue",
         ],
-        "README.md": ["called Hue", "~/.config/hue/", "io.github.rafael0rueda.Hue/config/hue"],
         "tests/test_install.py": None,
         "tests/test_settings.py": ["old_hue_settings"],
     }
