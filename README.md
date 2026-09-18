@@ -126,6 +126,7 @@ fill, and the font for the text tool.
 | Zoom in / out / 100%        | `Ctrl++` / `Ctrl+-` / `Ctrl+0`, or `Ctrl`+scroll |
 | Zoom to fit                 | `Ctrl+9`                                         |
 | Smaller / bigger brush      | `[` / `]`                                        |
+| Preferences                 | `Ctrl+,`                                         |
 | Keyboard shortcuts          | `Ctrl+?`                                         |
 | Quit                        | `Ctrl+Q`                                         |
 
@@ -186,8 +187,8 @@ also shows which image pixel the pointer is over.
 ## What Tempera remembers
 
 The window size, the tool in hand, the brush and text sizes, the font, the fill
-tolerance, both colours with the ones picked lately, the JPEG quality and where the
-palette sits are all kept in `~/.config/tempera/settings.ini` and put back the next
+tolerance, both colours with the ones picked lately, the JPEG quality, where the
+palette sits and the interface size are all kept in `~/.config/tempera/settings.ini` and put back the next
 time. A **New image** can start transparent instead of white.
 
 ## Moving the palette
@@ -306,6 +307,16 @@ secondary colour directly.
 
 Buttons that show only an icon carry a name for screen readers, the swatches announce
 their colour by name ("Light blue (#99c1f1)"), and the canvas announces its size.
+
+## Interface size
+
+**Preferences** in the main menu (or `Ctrl+,`) has an **Interface Size** of 100%, 125%,
+150% or 200%. It makes the whole app bigger at once: text, menus and dialogs, icons,
+the tool buttons, the colour swatches, checkboxes and sliders, and the grips for
+resizing the canvas. The change applies straight away to every open window and is
+remembered. It adds to GNOME's own **Large Text** setting rather than replacing it; the
+image itself and the file dialogs, which the desktop draws, keep their usual size. When
+the window is too small for everything at a big size, the sidebar and palette scroll.
 
 ## Translations
 

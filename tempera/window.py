@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
-from . import APP_NAME, shortcuts
+from . import APP_NAME, interface_size, shortcuts
 from .canvas import Canvas, CanvasFrame
 from .clipboard import has_image, read_image, texture_from_surface
 from .color import MAX_RECENT_COLORS, ColorBar, ColorState, PaletteLayout, rgba
@@ -27,6 +27,7 @@ from .settings import (
     save_palette_position,
     save_settings,
 )
+from .preferences import PreferencesDialog
 from .shortcuts_dialog import ShortcutsDialog
 from .text import FONT_SIZE_RANGE, font_size, font_without_size, with_font_size
 from .tools import TOOL_CLASSES
@@ -55,8 +56,10 @@ BRUSH_SIZE_RANGE = (1, 64)
 # 0 fills only the exact colour clicked; the top end spreads across most shades.
 TOLERANCE_RANGE = (0, 128)
 # Wide enough for the palette block and the tool grid, and fixed, so that
-# switching tools never moves the canvas sideways.
+# switching tools never moves the canvas sideways. Given for the default
+# interface size, like the bottom bar's height.
 SIDEBAR_WIDTH = 128
+BOTTOM_BAR_HEIGHT = 60
 WHITE = (1.0, 1.0, 1.0, 1.0)
 TRANSPARENT = (0.0, 0.0, 0.0, 0.0)
 
@@ -121,7 +124,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         self._color_bar = ColorBar(self.colors)
         self._add_shortcut_tooltip(self._color_bar.swap_button, "Swap colors", "win.swap-colors")
         # Where the palette can go: position -> (slot it sits in, strip to show).
-        self._palette_slots: dict[str, tuple[Gtk.Box, Gtk.Box | None]] = {}
+        self._palette_slots: dict[str, tuple[Gtk.Box, Gtk.Widget | None]] = {}
 
         # The sidebars and bottom bar sit in one frame with the header's colour,
         # and the canvas is inset in it as a card, so no separator lines are
@@ -141,6 +144,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         self.set_content(self.toasts)
 
         self._sync_tool_options()
+        self.sync_interface_size()
         self._install_actions()
         self._restore_preferences()
         self._watch_document()
@@ -206,6 +210,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         file_section.append(_("Canvas Size…"), "win.resize")
         menu.append_section(None, file_section)
         app_section = Gio.Menu()
+        app_section.append(_("Preferences"), "win.preferences")
         app_section.append(_("Keyboard Shortcuts"), "win.shortcuts")
         app_section.append(_("About {app}").format(app=APP_NAME), "app.about")
         app_section.append(_("Quit"), "app.quit")
@@ -226,12 +231,22 @@ class TemperaWindow(Adw.ApplicationWindow):
 
     def _build_bottom_bar(self) -> Gtk.Widget:
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        # The height the palette gives it, kept when the palette is elsewhere.
-        bar.set_size_request(-1, 60)
+        # Held at the height the palette gives it, even when the palette is
+        # elsewhere; sync_interface_size() sets it.
+        self._bottom_bar = bar
 
-        # Holds the palette when it sits at the bottom; empty otherwise.
+        # Holds the palette when it sits at the bottom; empty otherwise. It
+        # scrolls sideways rather than hold the window wider than the screen
+        # at a big interface size.
         bottom_slot = Gtk.Box()
-        bar.append(bottom_slot)
+        bottom_scroller = Gtk.ScrolledWindow(
+            hscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
+            vscrollbar_policy=Gtk.PolicyType.NEVER,
+            propagate_natural_width=True,
+            propagate_natural_height=True,
+        )
+        bottom_scroller.set_child(bottom_slot)
+        bar.append(bottom_scroller)
 
         # Expands so the status items stay on the right wherever the palette is.
         # How big the selection is, beside the pointer position.
@@ -291,23 +306,32 @@ class TemperaWindow(Adw.ApplicationWindow):
         self.canvas.attach_to_viewport(self._canvas_card)
         content.append(self._canvas_card)
 
-        right_strip = self._build_palette_strip()
+        right_slot, right_strip = self._build_palette_strip()
         content.append(right_strip)
-
-        # The strip is both the slot the palette sits in and what gets shown.
-        self._palette_slots["right"] = (right_strip, right_strip)
+        self._palette_slots["right"] = (right_slot, right_strip)
         return content
 
-    def _build_palette_strip(self) -> Gtk.Box:
-        """A column right of the canvas for the palette, hidden while it is elsewhere."""
-        strip = Gtk.Box(visible=False)
-        strip.add_css_class("tempera-sidebar")
-        return strip
+    def _build_palette_strip(self) -> tuple[Gtk.Box, Gtk.Widget]:
+        """A column right of the canvas for the palette, hidden while it is elsewhere.
+
+        Returns the slot the palette goes in and the strip to show. The strip
+        scrolls, like the sidebar, when the window is too short for it.
+        """
+        slot = Gtk.Box()
+        slot.add_css_class("tempera-sidebar")
+        strip = Gtk.ScrolledWindow(
+            hscrollbar_policy=Gtk.PolicyType.NEVER,
+            vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
+            propagate_natural_width=True,
+            visible=False,
+        )
+        strip.set_child(slot)
+        return slot, strip
 
     def _build_sidebar(self) -> Gtk.Widget:
         sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         sidebar.add_css_class("tempera-sidebar")
-        sidebar.set_size_request(SIDEBAR_WIDTH, -1)
+        self._sidebar = sidebar
 
         tools = Gtk.Grid(row_spacing=6, column_spacing=6, halign=Gtk.Align.CENTER)
         for index, tool in enumerate(TOOL_CLASSES):
@@ -428,6 +452,7 @@ class TemperaWindow(Adw.ApplicationWindow):
             "size-up": lambda *_args: self._step_size(1),
             "size-down": lambda *_args: self._step_size(-1),
             "shortcuts": lambda *_args: ShortcutsDialog(self.get_application()).present(self),
+            "preferences": lambda *_args: PreferencesDialog(self._set_interface_size).present(self),
             "clear-recent": lambda *_args: self._clear_recent(),
             "resize": lambda *_args: self._prompt_canvas_size(),
             "scale": lambda *_args: self._prompt_scale_image(),
@@ -525,6 +550,20 @@ class TemperaWindow(Adw.ApplicationWindow):
         else:
             self._canvas_card.remove_css_class("tempera-palette-beside")
         self._palette_position = position
+
+    def _set_interface_size(self, size: int) -> None:
+        """Draw the whole app at a new size, every window of it, and remember it."""
+        interface_size.apply(size)
+        save_settings({"interface-size": interface_size.current()})
+        for window in self.get_application().get_windows():
+            if isinstance(window, TemperaWindow):
+                window.sync_interface_size()
+
+    def sync_interface_size(self) -> None:
+        """Size what is set in code rather than by the stylesheets."""
+        self._sidebar.set_size_request(interface_size.scaled(SIDEBAR_WIDTH), -1)
+        self._bottom_bar.set_size_request(-1, interface_size.scaled(BOTTOM_BAR_HEIGHT))
+        self.canvas.sync_interface_size()
 
     def _step_size(self, step: int) -> None:
         """[ and ]: a bigger or smaller brush, or bigger or smaller text."""

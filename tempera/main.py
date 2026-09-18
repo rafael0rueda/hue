@@ -16,11 +16,11 @@ gi.require_version("GdkPixbuf", "2.0")
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
-from . import APP_ID, APP_NAME, VERSION  # noqa: E402
+from . import APP_ID, APP_NAME, VERSION, interface_size  # noqa: E402
 from .file_io import load_document  # noqa: E402
 from .i18n import _
 from .recent_files import remember_recent  # noqa: E402
-from .settings import migrate_old_config  # noqa: E402
+from .settings import load_setting, migrate_old_config  # noqa: E402
 from .window import TemperaWindow  # noqa: E402
 
 
@@ -85,6 +85,7 @@ class TemperaApplication(Adw.Application):
         Adw.Application.do_startup(self)
         migrate_old_config()
         self._load_resources()
+        interface_size.apply(interface_size.parse(load_setting("interface-size")))
 
         for name, callback in (("quit", self._on_quit), ("about", self._on_about)):
             action = Gio.SimpleAction.new(name, None)

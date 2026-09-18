@@ -14,6 +14,7 @@ from .color import ColorState
 from .document import MAX_SIZE, Document, crop_surface
 from .file_io import load_surface_async
 from .i18n import _
+from .interface_size import scaled
 from .text import DEFAULT_FONT, TextBox
 from .tools import (
     DEFAULT_TOLERANCE,
@@ -32,6 +33,7 @@ CHECKER_SIZE = 8
 # Below this zoom the image is shrunk, where smoothing reads better than dropped
 # pixels; at or above it every image pixel shows as a crisp square.
 SMOOTH_ZOOM_BELOW = 1.0
+# The resize grips, at the default interface size; they grow with it.
 HANDLE_SIZE = 10
 HANDLE_GRAB = 12
 # Room around the image so the grips sitting on its edge are fully visible.
@@ -42,9 +44,9 @@ ZOOM_MAX = 8.0
 ZOOM_PRESETS = [0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 8.0]
 # Multiplier per scroll-wheel notch while zooming.
 ZOOM_SCROLL_FACTOR = 1.1
-# Room left around the image by Zoom to Fit: the canvas margin on both sides,
-# plus the strip the resize grips need.
-FIT_PADDING = 2 * 24 + HANDLE_MARGIN
+# The canvas margin set in style.css. Zoom to Fit leaves it on both sides, plus
+# the strip the resize grips need.
+CANVAS_MARGIN = 24
 # Breathing room between the typed text and its dashed outline.
 TEXT_PADDING = 3
 CARET_BLINK_MS = 530
@@ -319,7 +321,7 @@ class Canvas(Gtk.DrawingArea):
             height = max(height, round(float_y) + float_height)
         # The margin scales with zoom too, so it stays big enough to fit the
         # (also zoomed) resize handles without clipping them at the edge.
-        margin = round(HANDLE_MARGIN * self.zoom)
+        margin = round(scaled(HANDLE_MARGIN) * self.zoom)
         self.set_content_width(round(width * self.zoom) + margin)
         self.set_content_height(round(height * self.zoom) + margin)
         self.update_property(
@@ -330,6 +332,11 @@ class Canvas(Gtk.DrawingArea):
                 )
             ],
         )
+
+    def sync_interface_size(self) -> None:
+        """Redraw the grips, and the room kept for them, at the interface size now chosen."""
+        self._sync_content_size()
+        self.queue_draw()
 
     @property
     def is_dragging(self) -> bool:
@@ -444,7 +451,8 @@ class Canvas(Gtk.DrawingArea):
         scrolled = self.get_ancestor(Gtk.ScrolledWindow)
         if scrolled is None:
             return (0, 0)
-        return (scrolled.get_width() - FIT_PADDING, scrolled.get_height() - FIT_PADDING)
+        padding = 2 * CANVAS_MARGIN + scaled(HANDLE_MARGIN)
+        return (scrolled.get_width() - padding, scrolled.get_height() - padding)
 
     def zoom_to_fit(self) -> bool:
         """Zoom so the whole image is in view. False while the window has no size yet."""
@@ -958,8 +966,9 @@ class Canvas(Gtk.DrawingArea):
         packs all 8 into less room than the grab tolerance around each one."""
         best: str | None = None
         best_distance = None
+        grab = scaled(HANDLE_GRAB)
         for name, (hx, hy) in self._handles().items():
-            if abs(x - hx) <= HANDLE_GRAB and abs(y - hy) <= HANDLE_GRAB:
+            if abs(x - hx) <= grab and abs(y - hy) <= grab:
                 distance = (x - hx) ** 2 + (y - hy) ** 2
                 if best_distance is None or distance < best_distance:
                     best, best_distance = name, distance
@@ -1349,9 +1358,10 @@ class Canvas(Gtk.DrawingArea):
             cr.fill()
 
     def _draw_handles(self, cr: cairo.Context, accent: Gdk.RGBA) -> None:
-        half = HANDLE_SIZE / 2
+        size = scaled(HANDLE_SIZE)
+        half = size / 2
         for hx, hy in self._handles().values():
-            cr.rectangle(hx - half, hy - half, HANDLE_SIZE, HANDLE_SIZE)
+            cr.rectangle(hx - half, hy - half, size, size)
             cr.set_source_rgba(accent.red, accent.green, accent.blue, 1.0)
             cr.fill_preserve()
             # A white keyline keeps the grip readable on top of dark artwork.

@@ -154,6 +154,9 @@ class ColorBar(Gtk.Box):
 
         self._primary_swatch = Swatch(colors.primary, size=32)
         self._secondary_swatch = Swatch(colors.secondary, size=32)
+        # Sized apart from the palette when the interface is drawn bigger.
+        self._primary_swatch.add_css_class("tempera-swatch-current")
+        self._secondary_swatch.add_css_class("tempera-swatch-current")
         self._primary_swatch.connect("picked", lambda *_args: self._choose(primary=True))
         self._secondary_swatch.connect("picked", lambda *_args: self._choose(primary=False))
 

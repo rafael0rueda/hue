@@ -99,6 +99,7 @@ SHORTCUT_GROUPS: list[tuple[str, list[Shortcut]]] = [
     (
         _("Application"),
         [
+            Shortcut("win.preferences", _("Preferences"), ("<Control>comma",)),
             Shortcut("win.shortcuts", _("Keyboard Shortcuts"), ("<Control>question",)),
             Shortcut("app.quit", _("Quit"), ("<Control>q",)),
         ],
