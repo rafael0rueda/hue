@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 Rafael Rueda
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Every push and pull request runs the tests, validates the desktop entry and
+# metainfo, and builds the Flatpak. A tag such as v1.0.0 also publishes a
+# GitHub release with that Flatpak attached, once everything else has passed.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests and metadata
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      # Fedora's image loaders decode inside a bubblewrap sandbox, which
+      # cannot be set up in an unprivileged container.
+      options: --privileged
+    steps:
+      - name: Install dependencies
+        run: >
+          dnf install -y --setopt=install_weak_deps=False
+          git python3 python3-gobject python3-cairo python3-pytest
+          gtk4 libadwaita gobject-introspection glycin-loaders dejavu-sans-fonts
+          xorg-x11-server-Xvfb xauth
+          meson ninja-build gettext appstream desktop-file-utils
+
+      - uses: actions/checkout@v5
+
+      # The window tests create real widgets, so they need a display.
+      - name: Run the tests
+        run: xvfb-run -a python3 -m pytest -q -p no:cacheprovider
+        env:
+          GSK_RENDERER: cairo
+
+      - name: Build and install
+        run: |
+          meson setup builddir --prefix=/usr
+          DESTDIR="$PWD/stage" meson install -C builddir
+
+      - name: Validate the metainfo
+        run: appstreamcli validate --no-net --explain stage/usr/share/metainfo/io.github.rafael0rueda.Tempera.metainfo.xml
+
+      - name: Validate the desktop entry
+        run: desktop-file-validate stage/usr/share/applications/io.github.rafael0rueda.Tempera.desktop
+
+      - name: Check a tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(meson introspect --projectinfo builddir | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME, but meson.build says $version"; exit 1; }
+
+  flatpak:
+    name: Flatpak
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: flatpak/io.github.rafael0rueda.Tempera.json
+          bundle: tempera.flatpak
+          artifact-name: tempera-flatpak
+          cache-key: flatpak-builder-${{ github.sha }}
+
+  release:
+    name: Publish the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, flatpak]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: tempera-flatpak
+
+      - name: Name the bundle and write the notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mv tempera.flatpak "Tempera-$version-x86_64.flatpak"
+          python3 build-aux/release_notes.py data/io.github.rafael0rueda.Tempera.metainfo.xml.in "$version" > release-notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Tempera ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: Tempera-*-x86_64.flatpak

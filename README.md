@@ -38,7 +38,9 @@ Optionally pass an image to open: `python3 -m tempera picture.png`
 ## Running the tests
 
 The pytest suite covers the drawing, file, clipboard, selection, text and undo logic,
-and checks that every module and icon the app uses gets installed. It needs no display.
+and checks that every module and icon the app uses gets installed. The window tests
+create real widgets, so run it inside your desktop session, or under `xvfb-run -a`
+without one; no window ever appears.
 
 ```
 sudo dnf install python3-pytest
@@ -46,6 +48,10 @@ python3 -m pytest
 ```
 
 From a meson build directory, `meson test -C builddir` runs the same suite.
+
+GitHub Actions runs the same suite on Fedora for every push and pull request,
+validates the desktop entry and metainfo, and builds the Flatpak
+([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 
 ## Installing
 
