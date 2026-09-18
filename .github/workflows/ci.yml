@@ -37,9 +37,19 @@ jobs:
 
       - uses: actions/checkout@v5
 
-      # The window tests create real widgets, so they need a display.
+      # The checkout belongs to the runner's user rather than the container's
+      # root, and git refuses to read such a repository unless told otherwise.
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # The window tests create real widgets, so they need a display. Failures
+      # are repeated as annotations, which show on the run's summary page.
       - name: Run the tests
-        run: xvfb-run -a python3 -m pytest -q -p no:cacheprovider
+        shell: bash
+        run: |
+          set -o pipefail
+          xvfb-run -a python3 -m pytest -q -rf --tb=short -p no:cacheprovider | tee pytest.log \
+            || { grep '^FAILED' pytest.log | sed 's/^/::error title=Test failed::/'; exit 1; }
         env:
           GSK_RENDERER: cairo
 
