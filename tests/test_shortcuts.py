@@ -49,9 +49,9 @@ def test_defaults_keep_the_keys_tempera_has_always_had():
         "win.tool::pencil": ["p"],
         "win.tool::brush": ["b"],
         "win.tool::eraser": ["e"],
-        "win.tool::line": ["l"],
-        "win.tool::rectangle": ["r"],
-        "win.tool::ellipse": ["o"],
+        "win.shape::line": ["l"],
+        "win.shape::rectangle": ["r"],
+        "win.shape::ellipse": ["o"],
         "win.tool::text": ["t"],
         "win.tool::fill": ["f"],
         "win.tool::picker": ["k"],
@@ -182,3 +182,15 @@ def test_nothing_fires_while_suspended(application):
     finally:
         shortcuts.suspend(application, False)
     assert application.get_accels_for_action("win.new") == ["<Control>n"]
+
+
+def test_every_shape_has_its_own_key():
+    from tempera.tools import SHAPE_IDS
+
+    for shape in SHAPE_IDS:
+        assert shortcuts.keys_for(f"win.shape::{shape}"), shape
+
+
+def test_a_shape_key_changed_in_tempera_1_0_carries_over(settings_file):
+    settings_file.write_text("[shortcuts]\nwin.tool::rectangle = <Shift>r\n", encoding="utf-8")
+    assert shortcuts.keys_for("win.shape::rectangle") == ["<Shift>r"]

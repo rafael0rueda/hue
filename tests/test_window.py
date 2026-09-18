@@ -471,7 +471,7 @@ def test_tool_options_show_only_for_the_tool_in_hand(window):
     def showing():
         return window._tool_options.get_visible_child_name()
 
-    use("rectangle")
+    use("shapes")
     assert showing() == "shape"
 
     use("fill")
@@ -569,7 +569,50 @@ def test_a_damaged_preference_falls_back_to_the_default(application, window, tmp
 def test_the_sidebar_keeps_its_width_whichever_tool_is_in_hand(window):
     """A long option label used to widen the sidebar and shove the canvas sideways."""
     widths = set()
-    for tool in ("pencil", "rectangle", "fill", "eraser", "text"):
+    for tool in ("pencil", "shapes", "fill", "eraser", "text"):
         window.lookup_action("tool").change_state(GLib.Variant.new_string(tool))
         widths.add(window._tool_options.measure(Gtk.Orientation.HORIZONTAL, -1)[1])
     assert len(widths) == 1
+
+
+def test_picking_a_shape_takes_up_the_shapes_tool(window):
+    window.activate_action("win.shape", GLib.Variant.new_string("star"))
+    assert window.canvas.active_tool.id == "shapes"
+    assert window.canvas.shapes.shape.id == "star"
+    assert window._shapes_button.get_icon_name() == "tempera-star-symbolic"
+    assert window._tool_options.get_visible_child_name() == "shape"
+
+
+def test_fill_is_offered_only_for_shapes_with_an_inside(window):
+    window.activate_action("win.shape", GLib.Variant.new_string("line"))
+    assert not window._fill_check.get_sensitive()
+    window.activate_action("win.shape", GLib.Variant.new_string("ellipse"))
+    assert window._fill_check.get_sensitive()
+
+
+def test_an_unknown_shape_is_ignored(window):
+    window.activate_action("win.shape", GLib.Variant.new_string("hexagon"))
+    assert window.canvas.shapes.shape.id == "rectangle"
+
+
+def test_the_shape_is_remembered(application, window):
+    window.activate_action("win.shape", GLib.Variant.new_string("arrow"))
+    window.lookup_action("tool").change_state(GLib.Variant.new_string("brush"))
+    window._save_preferences()
+
+    reopened = TemperaWindow(application)
+    try:
+        assert reopened.canvas.active_tool.id == "brush"
+        assert reopened.canvas.shapes.shape.id == "arrow"
+    finally:
+        reopened.destroy()
+
+
+def test_a_shape_tool_saved_by_tempera_1_0_opens_as_that_shape(application, window):
+    settings.save_settings({"tool": "ellipse"})
+    reopened = TemperaWindow(application)
+    try:
+        assert reopened.canvas.active_tool.id == "shapes"
+        assert reopened.canvas.shapes.shape.id == "ellipse"
+    finally:
+        reopened.destroy()

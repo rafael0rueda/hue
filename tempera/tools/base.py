@@ -30,6 +30,9 @@ class ToolContext:
     erase_to_transparency: bool = False
     # How far from the color under the pointer a flood fill still spreads.
     tolerance: int = 32
+    # How close, in image pixels, a click must land to hit a point already
+    # placed, such as the first corner of a polygon being closed.
+    reach: float = 4.0
 
     @property
     def color(self) -> Gdk.RGBA:
@@ -73,6 +76,23 @@ class Tool:
         pass
 
     def draw_preview(self, cr: cairo.Context, ctx: ToolContext) -> None:
+        pass
+
+    # Tools that take several clicks, such as the polygon, stay in progress
+    # between drags. The canvas keeps drawing their preview, sends them the
+    # pointer as it hovers, and lets Enter finish them or Esc drop them.
+
+    @property
+    def in_progress(self) -> bool:
+        return False
+
+    def hover(self, x: float, y: float) -> None:
+        pass
+
+    def finish(self, ctx: ToolContext) -> None:
+        """Draw what has been placed so far into the image."""
+
+    def cancel(self) -> None:
         pass
 
 
@@ -138,8 +158,21 @@ class FreehandTool(Tool):
         self._last = None
 
 
+def snap_45(origin: tuple[float, float], point: tuple[float, float]) -> tuple[float, float]:
+    """Turn the line from origin to point to the nearest 45° angle, keeping its length."""
+    x, y = point
+    sx, sy = origin
+    dx, dy = x - sx, y - sy
+    angle = round(math.atan2(dy, dx) / (math.pi / 4)) * (math.pi / 4)
+    length = math.hypot(dx, dy)
+    return (sx + length * math.cos(angle), sy + length * math.sin(angle))
+
+
 class ShapeTool(Tool):
     """Rubber-bands a shape while dragging and commits it on release."""
+
+    # Whether "Fill shape" applies: closed shapes have an inside to fill.
+    fillable = True
 
     def __init__(self):
         self._start: tuple[float, float] | None = None
@@ -181,11 +214,15 @@ class ShapeTool(Tool):
         return x, y, abs(end[0] - start[0]), abs(end[1] - start[1])
 
     def paint_shape(self, cr, ctx) -> None:
-        """Fill with the alternate color when filling is on, then stroke the outline."""
-        cr.set_line_width(ctx.size)
-        cr.set_line_join(cairo.LINE_JOIN_MITER)
-        if ctx.fill_shapes:
-            set_source(cr, ctx.alt_color)
-            cr.fill_preserve()
-        set_source(cr, ctx.color)
-        cr.stroke()
+        paint_shape(cr, ctx)
+
+
+def paint_shape(cr: cairo.Context, ctx: ToolContext) -> None:
+    """Fill the path with the alternate color when filling is on, then stroke its outline."""
+    cr.set_line_width(ctx.size)
+    cr.set_line_join(cairo.LINE_JOIN_MITER)
+    if ctx.fill_shapes:
+        set_source(cr, ctx.alt_color)
+        cr.fill_preserve()
+    set_source(cr, ctx.color)
+    cr.stroke()

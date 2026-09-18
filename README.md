@@ -90,13 +90,31 @@ canvas or copy from Files, all of which reach it through the desktop's file port
 | Pencil        | `P` | Hard-edged, no antialiasing                                          |
 | Brush         | `B` | Soft round stroke                                                    |
 | Eraser        | `E` | Paints the secondary (background) colour, or rubs back to nothing    |
-| Line          | `L` | `Shift` snaps it to 45° steps                                        |
-| Rectangle     | `R` | "Fill shape" fills with the secondary colour; `Shift` draws a square |
-| Ellipse       | `O` | `Shift` draws a circle                                               |
+| Shapes        |     | Nine shapes in one tool; see below                                   |
 | Text          | `T` | Type onto the canvas in any installed font                           |
 | Fill          | `F` | Flood fill, with a tolerance slider for how far it spreads           |
 | Colour picker | `K` | Picks the colour under the cursor                                    |
 | Select        | `S` | Rectangle to move, copy or cut                                       |
+
+The **Shapes** tool's options hold a grid of shapes, and each shape has its own key,
+which also picks up the tool. The tool's button shows the shape in hand.
+
+| Shape             | Key | How to draw it                                                   |
+| ----------------- | --- | ---------------------------------------------------------------- |
+| Line              | `L` | Drag; `Shift` snaps it to 45° steps                              |
+| Curve             | `C` | Drag a line, then drag twice to bend it (`Enter` after one bend) |
+| Arrow             | `A` | Drag from tail to tip; the head grows with the size              |
+| Rectangle         | `R` | Drag; `Shift` draws a square                                     |
+| Rounded rectangle | `U` | Drag; `Shift` draws a square                                     |
+| Ellipse           | `O` | Drag; `Shift` draws a circle                                     |
+| Triangle          | `I` | Drag; `Shift` makes it as wide as it is tall                     |
+| Star              | `H` | Drag; `Shift` makes it regular                                   |
+| Polygon           | `G` | Click each corner; click the first one again, or the last twice  |
+
+**Fill shape** fills the closed shapes with the secondary colour. The polygon and the
+curve stay open for more clicks until they are finished: `Enter` lands one early, `Esc`
+drops it, and picking another tool or shape lands it. Either way it is a single step
+to undo.
 
 Left click draws with the primary colour, right click with the secondary one. Both
 colour swatches in the bottom bar work the same way: left click sets the primary
@@ -107,8 +125,8 @@ be typed in as a hex value and given an opacity: a see-through colour paints ove
 is already there instead of replacing it. Colours picked lately gather in a second row
 beside the fixed palette, so a mixed colour is one click away next time.
 
-Each tool brings its own options under the size slider: **Fill shape** for the
-rectangle and ellipse, **Erase to nothing** for the eraser, a tolerance for the
+Each tool brings its own options under the size slider: the shapes and **Fill shape**
+for the Shapes tool, **Erase to nothing** for the eraser, a tolerance for the
 fill, and the font for the text tool.
 
 | Action                      | Shortcut                                         |

@@ -21,7 +21,7 @@ from .tools import (
     ERASER_TOOL_ID,
     FILL_TOOL_ID,
     SELECT_TOOL_ID,
-    SHAPE_TOOL_IDS,
+    SHAPES_TOOL_ID,
     TEXT_TOOL_ID,
     Tool,
     ToolContext,
@@ -47,6 +47,9 @@ ZOOM_SCROLL_FACTOR = 1.1
 # The canvas margin set in style.css. Zoom to Fit leaves it on both sides, plus
 # the strip the resize grips need.
 CANVAS_MARGIN = 24
+# How near, in screen pixels at the default interface size, a click must land
+# to hit a point already placed, such as a polygon's first corner.
+POINT_REACH = 6
 # Breathing room between the typed text and its dashed outline.
 TEXT_PADDING = 3
 CARET_BLINK_MS = 530
@@ -219,6 +222,9 @@ class Canvas(Gtk.DrawingArea):
         self._document_handler = 0
         self._drag_origin: tuple[float, float] | None = None
         self._drag_context: ToolContext | None = None
+        # The button that started a shape still waiting for more clicks; its
+        # colours carry through every click until the shape lands.
+        self._shape_button = Gdk.BUTTON_PRIMARY
         self._resize_handle: str | None = None
         self._pan_origin: tuple[float, float] | None = None
         self._pinch_zoom = 1.0
@@ -344,13 +350,23 @@ class Canvas(Gtk.DrawingArea):
         return self._drag_origin is not None
 
     def select_tool(self, tool_id: str) -> None:
+        self.finish_shape()
         self.active_tool = self.tools[tool_id]
         # A selection outlives the tool that made it: Cut, Copy and Delete keep
         # working on it, and going back to the select tool picks it up again.
 
     @property
+    def shapes(self):
+        return self.tools[SHAPES_TOOL_ID]
+
+    def select_shape(self, shape_id: str) -> None:
+        """Pick the shape the Shapes tool draws, landing one still being placed."""
+        self.finish_shape()
+        self.shapes.select(shape_id)
+
+    @property
     def supports_fill(self) -> bool:
-        return self.active_tool.id in SHAPE_TOOL_IDS
+        return self.active_tool.id == SHAPES_TOOL_ID
 
     @property
     def supports_font(self) -> bool:
@@ -690,10 +706,33 @@ class Canvas(Gtk.DrawingArea):
 
     def commit_floating(self) -> bool:
         """Land whatever hovers over the canvas — only ever one thing does."""
-        return self.commit_text() or self.commit_paste()
+        return self.finish_shape() or self.commit_text() or self.commit_paste()
 
     def cancel_floating(self) -> bool:
-        return self.cancel_text() or self.cancel_paste()
+        return self.cancel_shape() or self.cancel_text() or self.cancel_paste()
+
+    # Shapes placed over several clicks
+
+    @property
+    def shape_in_progress(self) -> bool:
+        return self.active_tool.in_progress
+
+    def finish_shape(self) -> bool:
+        """Draw a polygon or curve still being placed into the image, as one step to undo."""
+        if not self.active_tool.in_progress or self.is_dragging:
+            return False
+        self._document.begin_change()
+        self.active_tool.finish(self._make_context(self._shape_button))
+        self._document.finish_change()
+        self.queue_draw()
+        return True
+
+    def cancel_shape(self) -> bool:
+        if not self.active_tool.in_progress or self.is_dragging:
+            return False
+        self.active_tool.cancel()
+        self.queue_draw()
+        return True
 
     def begin_paste(
         self,
@@ -826,6 +865,12 @@ class Canvas(Gtk.DrawingArea):
     def _on_key_pressed(self, controller, keyval, keycode, state) -> bool:
         if self._text is not None:
             return self._on_text_key(keyval, state)
+        if self.active_tool.in_progress:
+            if keyval == Gdk.KEY_Escape:
+                return self.cancel_shape()
+            if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_ISO_Enter):
+                return self.finish_shape()
+            return False
         if self._paste is not None:
             if keyval == Gdk.KEY_Escape:
                 return self.cancel_paste()
@@ -923,8 +968,9 @@ class Canvas(Gtk.DrawingArea):
         if self._paste is not None:
             # Scales the pasted pixels rather than the canvas.
             return self._rect_handles(self._paste.x, self._paste.y, self._paste.width, self._paste.height)
-        if self.has_floating:
-            # A text box owns the pointer until it lands.
+        if self.has_floating or self.active_tool.in_progress:
+            # A text box owns the pointer until it lands, and a shape being
+            # placed takes every click, even on the edge of the image.
             return {}
         if self.selecting and self._selection is not None:
             # Scales the selected pixels in place.
@@ -984,6 +1030,10 @@ class Canvas(Gtk.DrawingArea):
         self.emit("pointer-moved", x, y)
         if self._drag_origin is not None:
             return
+        if self.active_tool.in_progress:
+            # The side or bend still to come follows the pointer.
+            self.active_tool.hover(x, y)
+            self.queue_draw()
         handle = self._handle_at(x, y)
         if handle is not None:
             self._set_cursor(handle)
@@ -1023,6 +1073,7 @@ class Canvas(Gtk.DrawingArea):
             fill_shapes=self.fill_shapes,
             erase_to_transparency=self.erase_to_transparency,
             tolerance=self.fill_tolerance,
+            reach=scaled(POINT_REACH) / self.zoom,
             pick_color=lambda color, btn: self.emit("color-picked", color, btn),
             begin_text=self.begin_text,
             select_region=self.select_region,
@@ -1099,7 +1150,9 @@ class Canvas(Gtk.DrawingArea):
             self.queue_draw()
             return
 
-        self._drag_context = self._make_context(gesture.get_current_button())
+        if not self.active_tool.in_progress:
+            self._shape_button = gesture.get_current_button()
+        self._drag_context = self._make_context(self._shape_button)
         if self.active_tool.mutates:
             self._document.begin_change()
         self.active_tool.press(self._drag_context, start_x, start_y)
@@ -1199,6 +1252,9 @@ class Canvas(Gtk.DrawingArea):
             self._document.finish_change()
         self._drag_origin = None
         self._drag_context = None
+        if self.active_tool.in_progress:
+            # Enter lands the shape and Esc drops it.
+            self.grab_focus()
         self.queue_draw()
 
     # Drawing
@@ -1220,9 +1276,12 @@ class Canvas(Gtk.DrawingArea):
             cr.get_source().set_filter(cairo.FILTER_NEAREST)
         cr.paint()
 
-        if self._drag_context is not None:
+        context = self._drag_context
+        if context is None and self.active_tool.in_progress:
+            context = self._make_context(self._shape_button)
+        if context is not None:
             cr.save()
-            self.active_tool.draw_preview(cr, self._drag_context)
+            self.active_tool.draw_preview(cr, context)
             cr.restore()
         cr.restore()
 

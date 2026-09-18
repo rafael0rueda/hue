@@ -16,7 +16,7 @@ from gi.repository import Gdk, Gtk
 
 from . import settings
 from .i18n import _
-from .tools import TOOL_CLASSES
+from .tools import SHAPE_CLASSES, TOOL_CLASSES
 
 
 @dataclass(frozen=True)
@@ -30,14 +30,29 @@ TOOL_KEYS = {
     "pencil": "p",
     "brush": "b",
     "eraser": "e",
-    "line": "l",
-    "rectangle": "r",
-    "ellipse": "o",
     "text": "t",
     "fill": "f",
     "picker": "k",
     "select": "s",
 }
+
+# Each shape has a key that also takes up the Shapes tool, so the Shapes
+# button itself needs none.
+SHAPE_KEYS = {
+    "line": "l",
+    "curve": "c",
+    "arrow": "a",
+    "rectangle": "r",
+    "rounded-rectangle": "u",
+    "ellipse": "o",
+    "triangle": "i",
+    "star": "h",
+    "polygon": "g",
+}
+
+# Actions saved under another name by an older Tempera: 1.0 had a tool for
+# each of the first three shapes.
+_RENAMED = {f"win.tool::{shape}": f"win.shape::{shape}" for shape in ("line", "rectangle", "ellipse")}
 
 SHORTCUT_GROUPS: list[tuple[str, list[Shortcut]]] = [
     (
@@ -84,8 +99,15 @@ SHORTCUT_GROUPS: list[tuple[str, list[Shortcut]]] = [
     (
         _("Tools"),
         [
-            Shortcut(f"win.tool::{tool.id}", tool.label, (TOOL_KEYS[tool.id],))
+            Shortcut(f"win.tool::{tool.id}", tool.label, tuple(TOOL_KEYS.get(tool.id, ())))
             for tool in TOOL_CLASSES
+        ],
+    ),
+    (
+        _("Shapes"),
+        [
+            Shortcut(f"win.shape::{shape.id}", shape.label, (SHAPE_KEYS[shape.id],))
+            for shape in SHAPE_CLASSES
         ],
     ),
     (
@@ -209,6 +231,7 @@ def _overrides() -> dict[str, list[str]]:
 def _check(saved: dict[str, list[str]]) -> dict[str, list[str]]:
     overrides = {}
     for action, accels in saved.items():
+        action = _RENAMED.get(action, action)
         if action not in SHORTCUTS:
             continue
         normalized = [normalize(accel) for accel in accels]

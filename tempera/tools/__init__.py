@@ -3,30 +3,27 @@
 
 from .base import Tool, ToolContext, draw_marquee
 from .brush import BrushTool
-from .ellipse import EllipseTool
 from .eraser import EraserTool
 from .fill import TOLERANCE as DEFAULT_TOLERANCE, FillTool
-from .line import LineTool
 from .pencil import PencilTool
 from .picker import PickerTool
-from .rectangle import RectangleTool
 from .select import SelectTool
+from .shapes import DEFAULT_SHAPE, SHAPE_CLASSES, ShapesTool
 from .text import TextTool
 
 TOOL_CLASSES = [
     PencilTool,
     BrushTool,
     EraserTool,
-    LineTool,
-    RectangleTool,
-    EllipseTool,
+    ShapesTool,
     TextTool,
     FillTool,
     PickerTool,
     SelectTool,
 ]
 
-SHAPE_TOOL_IDS = {LineTool.id, RectangleTool.id, EllipseTool.id}
+SHAPES_TOOL_ID = ShapesTool.id
+SHAPE_IDS = [cls.id for cls in SHAPE_CLASSES]
 ERASER_TOOL_ID = EraserTool.id
 FILL_TOOL_ID = FillTool.id
 TEXT_TOOL_ID = TextTool.id
@@ -42,7 +39,10 @@ __all__ = [
     "ToolContext",
     "draw_marquee",
     "TOOL_CLASSES",
-    "SHAPE_TOOL_IDS",
+    "SHAPE_CLASSES",
+    "SHAPE_IDS",
+    "DEFAULT_SHAPE",
+    "SHAPES_TOOL_ID",
     "ERASER_TOOL_ID",
     "FILL_TOOL_ID",
     "DEFAULT_TOLERANCE",

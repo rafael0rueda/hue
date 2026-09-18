@@ -30,7 +30,7 @@ from .settings import (
 from .preferences import PreferencesDialog
 from .shortcuts_dialog import ShortcutsDialog
 from .text import FONT_SIZE_RANGE, font_size, font_without_size, with_font_size
-from .tools import TOOL_CLASSES
+from .tools import DEFAULT_SHAPE, SHAPE_CLASSES, SHAPE_IDS, SHAPES_TOOL_ID, TOOL_CLASSES
 
 # Actions that edit or replace the image. A stroke, move or resize in progress
 # holds on to the image it started on, so these wait until the button is let go.
@@ -341,6 +341,9 @@ class TemperaWindow(Adw.ApplicationWindow):
             button.set_action_name("win.tool")
             button.set_action_target_value(GLib.Variant.new_string(tool.id))
             tools.attach(button, index % 2, index // 2, 1, 1)
+            if tool.id == SHAPES_TOOL_ID:
+                # Shows the shape in hand, so the sidebar says what a drag will draw.
+                self._shapes_button = button
         sidebar.append(tools)
 
         sidebar.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
@@ -366,9 +369,20 @@ class TemperaWindow(Adw.ApplicationWindow):
         self._tool_options.add_named(Gtk.Box(), "none")
         sidebar.append(self._tool_options)
 
+        shape_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        shape_grid = Gtk.Grid(row_spacing=2, column_spacing=2, halign=Gtk.Align.CENTER)
+        for index, shape in enumerate(SHAPE_CLASSES):
+            button = Gtk.ToggleButton(icon_name=shape.icon_name)
+            button.add_css_class("flat")
+            self._add_shortcut_tooltip(button, shape.label, f"win.shape::{shape.id}")
+            button.set_action_name("win.shape")
+            button.set_action_target_value(GLib.Variant.new_string(shape.id))
+            shape_grid.attach(button, index % 3, index // 3, 1, 1)
+        shape_box.append(shape_grid)
         self._fill_check = _option_check(_("Fill shape"))
         self._fill_check.connect("toggled", self._on_fill_toggled)
-        self._tool_options.add_named(self._fill_check, "shape")
+        shape_box.append(self._fill_check)
+        self._tool_options.add_named(shape_box, "shape")
 
         self._erase_check = _option_check(_("Erase to nothing"))
         self._erase_check.set_tooltip_text(
@@ -480,6 +494,12 @@ class TemperaWindow(Adw.ApplicationWindow):
         tool_action.connect("change-state", self._unless_dragging(self._on_tool_changed))
         self.add_action(tool_action)
 
+        shape_action = Gio.SimpleAction.new_stateful(
+            "shape", GLib.VariantType.new("s"), GLib.Variant.new_string(DEFAULT_SHAPE)
+        )
+        shape_action.connect("change-state", self._unless_dragging(self._on_shape_changed))
+        self.add_action(shape_action)
+
         palette_action = Gio.SimpleAction.new_stateful(
             "palette-position",
             GLib.VariantType.new("s"),
@@ -519,6 +539,17 @@ class TemperaWindow(Adw.ApplicationWindow):
         self.canvas.select_tool(value.get_string())
         self._sync_tool_options()
         self._sync_size_scale()
+
+    def _on_shape_changed(self, action, value: GLib.Variant) -> None:
+        """Picking a shape, from the grid or its key, also takes up the Shapes tool."""
+        shape_id = value.get_string()
+        if shape_id not in SHAPE_IDS:
+            return
+        self.canvas.select_shape(shape_id)
+        action.set_state(value)
+        self._shapes_button.set_icon_name(self.canvas.shapes.shape.icon_name)
+        self.lookup_action("tool").change_state(GLib.Variant.new_string(SHAPES_TOOL_ID))
+        self._sync_tool_options()
 
     def _on_palette_position_changed(self, action, value: GLib.Variant) -> None:
         position = value.get_string()
@@ -616,6 +647,8 @@ class TemperaWindow(Adw.ApplicationWindow):
         page = "none"
         if canvas.supports_fill:
             page = "shape"
+            # A line, arrow or curve has no inside to fill.
+            self._fill_check.set_sensitive(canvas.shapes.fillable)
         elif canvas.supports_erase_mode:
             page = "eraser"
         elif canvas.supports_tolerance:
@@ -1162,6 +1195,12 @@ class TemperaWindow(Adw.ApplicationWindow):
     def _restore_preferences(self) -> None:
         """Put back the tool, sizes, font and colours from the last time."""
         tool = load_setting("tool")
+        shape = load_setting("shape")
+        if tool in SHAPE_IDS:
+            # Tempera 1.0 had a tool for each shape.
+            tool, shape = SHAPES_TOOL_ID, tool
+        if shape in SHAPE_IDS:
+            self.lookup_action("shape").change_state(GLib.Variant.new_string(shape))
         if any(tool == candidate.id for candidate in TOOL_CLASSES):
             self.lookup_action("tool").change_state(GLib.Variant.new_string(tool))
         self.canvas.brush_size = _whole(
@@ -1194,6 +1233,7 @@ class TemperaWindow(Adw.ApplicationWindow):
                 "window-height": height,
                 "window-maximized": "1" if self.is_maximized() else "0",
                 "tool": self.canvas.active_tool.id,
+                "shape": self.canvas.shapes.shape.id,
                 "brush-size": self.canvas.brush_size,
                 "font": self.canvas.font,
                 "fill-tolerance": self.canvas.fill_tolerance,
