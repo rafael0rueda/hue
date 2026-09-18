@@ -76,3 +76,39 @@ def test_migration_never_overwrites_tempera_settings(tmp_path):
 def test_migration_without_old_settings_creates_nothing(tmp_path):
     settings.migrate_old_config(tmp_path)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_settings_are_read_from_disk_once_while_unchanged(monkeypatch, tmp_path):
+    use_tmp_settings_file(monkeypatch, tmp_path)
+    settings.save_settings({"tool": "brush", "font": "Sans 12"})
+    reads = []
+    real_read_text = settings.Path.read_text
+    monkeypatch.setattr(
+        settings.Path,
+        "read_text",
+        lambda self, *args, **kwargs: reads.append(self) or real_read_text(self, *args, **kwargs),
+    )
+    for _round in range(5):
+        assert settings.load_setting("tool") == "brush"
+        assert settings.load_setting("font") == "Sans 12"
+    assert reads == []
+
+
+def test_a_change_made_by_another_window_is_noticed(monkeypatch, tmp_path):
+    path = use_tmp_settings_file(monkeypatch, tmp_path)
+    settings.save_settings({"tool": "brush"})
+    assert settings.load_setting("tool") == "brush"
+    path.write_text("[view]\ntool = rectangle\n", encoding="utf-8")
+    assert settings.load_setting("tool") == "rectangle"
+
+
+def test_saving_one_setting_leaves_the_cached_others_alone(monkeypatch, tmp_path):
+    use_tmp_settings_file(monkeypatch, tmp_path)
+    settings.save_settings({"tool": "brush"})
+    settings.save_shortcut_overrides({"win.undo": ["<Control>u"]})
+    settings.save_settings({"font": "Serif 9"})
+    assert settings.load_setting("tool") == "brush"
+    assert settings.load_shortcut_overrides() == {"win.undo": ["<Control>u"]}
+    # What a caller gets back is its own to change.
+    settings.load_shortcut_overrides()["win.undo"].append("<Control>q")
+    assert settings.load_shortcut_overrides() == {"win.undo": ["<Control>u"]}

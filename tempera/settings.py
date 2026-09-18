@@ -52,21 +52,60 @@ def _settings_path() -> Path:
     return config_dir() / "settings.ini"
 
 
-def _load() -> configparser.ConfigParser:
+# The file as last read or written, keyed by what stat() said about it then.
+# Tooltips and the shortcuts dialog ask for the keys dozens of times in a row;
+# checking the file has not changed is far cheaper than reading and parsing it,
+# and still notices another Tempera window saving in the meantime.
+_cache: tuple[tuple, dict[str, dict[str, str]]] | None = None
+
+
+def _stamp(path: Path) -> tuple | None:
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    return (str(path), info.st_ino, info.st_size, info.st_mtime_ns)
+
+
+def _new_parser() -> configparser.ConfigParser:
     # Shortcut keys are action names such as "win.tool::pencil", so ":" cannot
     # be a delimiter, and they are case-sensitive.
     parser = configparser.ConfigParser(interpolation=None, delimiters=("=",))
     parser.optionxform = str
+    return parser
+
+
+def _as_dict(parser: configparser.ConfigParser) -> dict[str, dict[str, str]]:
+    return {section: dict(parser.items(section)) for section in parser.sections()}
+
+
+def _values() -> dict[str, dict[str, str]]:
+    """Every saved setting, by section. Shared with the cache, so not to be changed."""
+    global _cache
+    path = _settings_path()
+    stamp = _stamp(path)
+    if stamp is not None and _cache is not None and _cache[0] == stamp:
+        return _cache[1]
+    parser = _new_parser()
     try:
-        parser.read_string(_settings_path().read_text(encoding="utf-8"))
+        parser.read_string(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, configparser.Error):
-        pass
+        parser = _new_parser()
+    values = _as_dict(parser)
+    _cache = (stamp, values) if stamp is not None else None
+    return values
+
+
+def _load() -> configparser.ConfigParser:
+    """A parser holding the settings, for changing and writing back."""
+    parser = _new_parser()
+    parser.read_dict(_values())
     return parser
 
 
 def load_setting(key: str, fallback: str = "") -> str:
     """One remembered preference, or the fallback when it was never saved."""
-    return _load().get(_SECTION, key, fallback=fallback)
+    return _values().get(_SECTION, {}).get(key, fallback)
 
 
 def save_settings(values: dict[str, str]) -> None:
@@ -90,10 +129,8 @@ def save_palette_position(position: str) -> None:
 
 def load_shortcut_overrides() -> dict[str, list[str]]:
     """Shortcuts changed from their defaults: action -> accelerators, [] for disabled."""
-    parser = _load()
-    if not parser.has_section(_SHORTCUTS_SECTION):
-        return {}
-    return {action: value.split() for action, value in parser.items(_SHORTCUTS_SECTION)}
+    section = _values().get(_SHORTCUTS_SECTION, {})
+    return {action: value.split() for action, value in section.items()}
 
 
 def save_shortcut_overrides(overrides: dict[str, list[str]]) -> None:
@@ -116,4 +153,7 @@ def _save(parser: configparser.ConfigParser) -> None:
         # Replaced whole, so a crash mid-write cannot leave a truncated file.
         os.replace(temporary, path)
     except OSError:
-        pass
+        return
+    global _cache
+    stamp = _stamp(path)
+    _cache = (stamp, _as_dict(parser)) if stamp is not None else None

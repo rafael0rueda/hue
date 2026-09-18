@@ -10,9 +10,10 @@ import cairo
 from gi.repository import Gdk, GdkPixbuf, GObject
 
 MAX_UNDO = 50
-# Every undo step is a full copy of the image, so the history is also capped by
-# memory: 50 steps of a 4000 × 3000 photo would otherwise take 2.4 GB, and of
-# the largest canvas 12.8 GB. The newest step is always kept, whatever its size.
+# An undo step keeps only the rectangle the edit changed, but a fill or a
+# rotation changes all of it, so the history is also capped by memory: 50 whole
+# steps of the largest canvas would take 12.8 GB. The newest step is always
+# kept, whatever its size.
 UNDO_BUDGET = 1024 * 1024 * 1024
 DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 600
@@ -67,6 +68,69 @@ def surface_bytes(surface: cairo.ImageSurface) -> int:
     return surface.get_stride() * surface.get_height()
 
 
+def _row_pointers(surface: cairo.ImageSurface) -> tuple[int, int]:
+    """The address of a surface's pixels, and how far apart its rows are."""
+    data = surface.get_data()
+    return ctypes.addressof(ctypes.c_char.from_buffer(data)), surface.get_stride()
+
+
+def changed_rect(
+    before: cairo.ImageSurface, after: cairo.ImageSurface
+) -> tuple[int, int, int, int] | None:
+    """The smallest rectangle holding every pixel that differs, or None if none do.
+
+    Both surfaces must be the same size. Rows are compared whole with memcmp; the
+    left and right edges are then narrowed by halving, so a stroke across a big
+    photo costs a few thousand comparisons rather than a walk over every byte.
+    """
+    width, height = after.get_width(), after.get_height()
+    before.flush()
+    after.flush()
+    a, stride = _row_pointers(before)
+    b, _stride = _row_pointers(after)
+    row_bytes = width * 4
+
+    def differs(y: int, start: int, end: int) -> bool:
+        """Whether row y differs anywhere in pixels start to end, end excluded."""
+        offset = y * stride + start * 4
+        return _libc.memcmp(a + offset, b + offset, (end - start) * 4) != 0
+
+    top = 0
+    while top < height and _libc.memcmp(a + top * stride, b + top * stride, row_bytes) == 0:
+        top += 1
+    if top == height:
+        return None
+    bottom = height - 1
+    while _libc.memcmp(a + bottom * stride, b + bottom * stride, row_bytes) == 0:
+        bottom -= 1
+
+    # Pixels left of `left` and right of `right` are known to match so far;
+    # each row that differs outside them pushes them out.
+    left, right = width, 0
+    for y in range(top, bottom + 1):
+        if left > 0 and differs(y, 0, left):
+            low, high = 0, left - 1
+            # The first differing pixel: the smallest n with a difference in [0, n].
+            while low < high:
+                middle = (low + high) // 2
+                if differs(y, 0, middle + 1):
+                    high = middle
+                else:
+                    low = middle + 1
+            left = low
+        if right < width and differs(y, right, width):
+            low, high = right, width
+            # One past the last differing pixel: the largest n with a difference in [n - 1, width).
+            while low < high:
+                middle = (low + high + 1) // 2
+                if differs(y, middle - 1, width):
+                    low = middle
+                else:
+                    high = middle - 1
+            right = low
+    return left, top, right - left, bottom - top + 1
+
+
 def same_pixels(a: cairo.ImageSurface, b: cairo.ImageSurface) -> bool:
     """Whether two surfaces hold identical images.
 
@@ -86,6 +150,49 @@ def same_pixels(a: cairo.ImageSurface, b: cairo.ImageSurface) -> bool:
     return _libc.memcmp(a_buffer, b_buffer, size) == 0
 
 
+class Patch:
+    """One step of the history: the pixels to put back to get the image as it was.
+
+    Usually a rectangle of the same-sized image; for an edit that changed the
+    canvas size it is the whole image, which then replaces the surface. An edit
+    that changed nothing has no pixels at all.
+    """
+
+    __slots__ = ("x", "y", "pixels", "whole")
+
+    def __init__(self, x: int, y: int, pixels: cairo.ImageSurface | None, whole: bool = False):
+        self.x, self.y, self.pixels, self.whole = x, y, pixels, whole
+
+    @property
+    def nbytes(self) -> int:
+        return surface_bytes(self.pixels) if self.pixels is not None else 0
+
+    def apply(self, surface: cairo.ImageSurface) -> tuple[cairo.ImageSurface, Patch]:
+        """Put the pixels back; returns the resulting surface and the patch that reverses it."""
+        if self.whole:
+            return self.pixels, Patch(0, 0, surface, whole=True)
+        if self.pixels is None:
+            return surface, Patch(0, 0, None)
+        width, height = self.pixels.get_width(), self.pixels.get_height()
+        reverse = Patch(self.x, self.y, crop_surface(surface, self.x, self.y, width, height))
+        cr = cairo.Context(surface)
+        cr.set_operator(cairo.OPERATOR_SOURCE)
+        cr.set_source_surface(self.pixels, self.x, self.y)
+        cr.rectangle(self.x, self.y, width, height)
+        cr.fill()
+        return surface, reverse
+
+
+def patch_between(before: cairo.ImageSurface, after: cairo.ImageSurface) -> Patch | None:
+    """What it takes to turn `after` back into `before`, or None if they are the same."""
+    if (before.get_width(), before.get_height()) != (after.get_width(), after.get_height()):
+        return Patch(0, 0, before, whole=True)
+    rect = changed_rect(before, after)
+    if rect is None:
+        return None
+    return Patch(rect[0], rect[1], crop_surface(before, *rect))
+
+
 class Document(GObject.Object):
     """The painted image plus its undo history."""
 
@@ -98,14 +205,14 @@ class Document(GObject.Object):
         super().__init__()
         self.surface = surface or new_surface(DEFAULT_WIDTH, DEFAULT_HEIGHT)
         self.file = None
-        self._undo: list[cairo.ImageSurface] = []
-        self._redo: list[cairo.ImageSurface] = []
+        self._undo: list[Patch] = []
+        self._redo: list[Patch] = []
         # How many undo steps deep the saved image sits, so undoing back to it
         # counts as unmodified. None once no undo or redo can reach it again.
         self._saved_depth: int | None = 0
-        # The redo steps and save point begin_change() replaced, put back if
-        # the change turns out to alter nothing.
-        self._pending: tuple[list[cairo.ImageSurface], int | None] | None = None
+        # The image as it was when begin_change() was called, until the change
+        # is committed and only the part it altered is kept.
+        self._before: cairo.ImageSurface | None = None
 
     @property
     def width(self) -> int:
@@ -145,26 +252,31 @@ class Document(GObject.Object):
 
     def begin_change(self) -> None:
         """Snapshot the surface so the coming edit can be undone."""
-        self._pending = (self._redo, self._saved_depth)
-        self._undo.append(copy_surface(self.surface))
-        self._redo = []
-        if self._saved_depth is not None and self._saved_depth >= len(self._undo):
-            # The saved image was among the redo steps just dropped.
+        self._before = copy_surface(self.surface)
+
+    def _record(self, patch: Patch) -> None:
+        self._undo.append(patch)
+        if self._redo and self._saved_depth is not None and self._saved_depth >= len(self._undo):
+            # The saved image was among the redo steps about to be dropped.
             self._saved_depth = None
+        self._redo = []
+        self._trim_history()
 
     def commit_change(self) -> None:
-        self._pending = None
-        self._trim_history()
+        """Keep the change begun earlier as one undo step, even if it altered nothing."""
+        if self._before is not None:
+            before, self._before = self._before, None
+            self._record(patch_between(before, self.surface) or Patch(0, 0, None))
         self.emit("content-changed")
         self.emit("state-changed")
 
     def _trim_history(self) -> None:
         """Drop the oldest undo steps past MAX_UNDO or UNDO_BUDGET, keeping the newest."""
         kept = len(self._undo)
-        total = sum(surface_bytes(surface) for surface in self._undo)
+        total = sum(patch.nbytes for patch in self._undo)
         excess = 0
         while kept > 1 and (kept > MAX_UNDO or total > UNDO_BUDGET):
-            total -= surface_bytes(self._undo[excess])
+            total -= self._undo[excess].nbytes
             excess += 1
             kept -= 1
         if excess == 0:
@@ -181,13 +293,16 @@ class Document(GObject.Object):
         A fill in the colour already there, or a stroke off the canvas, then
         leaves no undo step behind and does not mark the image as modified.
         """
-        if self._pending is not None and self._undo and same_pixels(self._undo[-1], self.surface):
-            self._undo.pop()
-            self._redo, self._saved_depth = self._pending
-            self._pending = None
-            self.emit("state-changed")
+        if self._before is None:
+            self.commit_change()
             return
-        self.commit_change()
+        before, self._before = self._before, None
+        patch = patch_between(before, self.surface)
+        if patch is None:
+            return
+        self._record(patch)
+        self.emit("content-changed")
+        self.emit("state-changed")
 
     @property
     def can_undo(self) -> bool:
@@ -198,18 +313,34 @@ class Document(GObject.Object):
         return bool(self._redo)
 
     def undo(self) -> None:
-        if not self._undo:
+        # Not in the middle of a stroke: the step it would take back is not
+        # finished, and taking an older one back would tangle the two.
+        if not self._undo or self._before is not None:
             return
-        self._redo.append(copy_surface(self.surface))
-        self.surface = self._undo.pop()
-        self.commit_change()
+        self.surface, reverse = self._undo.pop().apply(self.surface)
+        self._redo.append(reverse)
+        self.emit("content-changed")
+        self.emit("state-changed")
 
     def redo(self) -> None:
-        if not self._redo:
+        if not self._redo or self._before is not None:
             return
-        self._undo.append(copy_surface(self.surface))
-        self.surface = self._redo.pop()
-        self.commit_change()
+        self.surface, reverse = self._redo.pop().apply(self.surface)
+        self._undo.append(reverse)
+        self._trim_history()
+        self.emit("content-changed")
+        self.emit("state-changed")
+
+    def _replace_surface(self, surface: cairo.ImageSurface) -> None:
+        """Swap in a new image as one undo step, keeping the old one whole.
+
+        For the edits that build a new surface rather than draw on this one:
+        the old surface is left untouched, so it needs no copy.
+        """
+        self._record(Patch(0, 0, self.surface, whole=True))
+        self.surface = surface
+        self.emit("content-changed")
+        self.emit("state-changed")
 
     def _resized_surface(
         self, width: int, height: int, fill=(1.0, 1.0, 1.0, 1.0)
@@ -230,9 +361,7 @@ class Document(GObject.Object):
         if width == self.width and height == self.height:
             return
 
-        self.begin_change()
-        self.surface = self._resized_surface(width, height, fill)
-        self.commit_change()
+        self._replace_surface(self._resized_surface(width, height, fill))
 
     def _scaled_surface(self, width: int, height: int) -> cairo.ImageSurface:
         """The whole image resampled to a new size."""
@@ -257,9 +386,7 @@ class Document(GObject.Object):
         if (width, height) == (self.width, self.height):
             return
 
-        self.begin_change()
-        self.surface = self._scaled_surface(width, height)
-        self.commit_change()
+        self._replace_surface(self._scaled_surface(width, height))
 
     def _rotated_surface(self, clockwise: bool) -> cairo.ImageSurface:
         surface = new_surface(self.height, self.width, (0.0, 0.0, 0.0, 0.0))
@@ -277,9 +404,7 @@ class Document(GObject.Object):
 
     def rotate(self, clockwise: bool) -> None:
         """Turn the whole canvas a quarter turn, swapping its width and height."""
-        self.begin_change()
-        self.surface = self._rotated_surface(clockwise)
-        self.commit_change()
+        self._replace_surface(self._rotated_surface(clockwise))
 
     def _flipped_surface(self, horizontal: bool) -> cairo.ImageSurface:
         surface = new_surface(self.width, self.height, (0.0, 0.0, 0.0, 0.0))
@@ -297,15 +422,11 @@ class Document(GObject.Object):
 
     def flip(self, horizontal: bool) -> None:
         """Mirror the whole canvas left-right or top-bottom."""
-        self.begin_change()
-        self.surface = self._flipped_surface(horizontal)
-        self.commit_change()
+        self._replace_surface(self._flipped_surface(horizontal))
 
     def crop_to(self, x: int, y: int, width: int, height: int) -> None:
         """Shrink the canvas to one rectangle of itself, discarding the rest."""
-        self.begin_change()
-        self.surface = crop_surface(self.surface, x, y, width, height)
-        self.commit_change()
+        self._replace_surface(crop_surface(self.surface, x, y, width, height))
 
     def _fill_rect(self, rect: tuple[int, int, int, int], fill) -> None:
         cr = cairo.Context(self.surface)

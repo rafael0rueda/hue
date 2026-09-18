@@ -191,9 +191,23 @@ def problem_with(accel: str) -> str | None:
 # The user's shortcuts
 
 
+# The last overrides read and what they came to once checked, since checking
+# every key again for each tooltip adds up.
+_checked: tuple[dict[str, list[str]], dict[str, list[str]]] | None = None
+
+
 def _overrides() -> dict[str, list[str]]:
+    """The user's changes that are still usable, as a copy the caller may change."""
+    global _checked
+    saved = settings.load_shortcut_overrides()
+    if _checked is None or _checked[0] != saved:
+        _checked = (saved, _check(saved))
+    return {action: list(keys) for action, keys in _checked[1].items()}
+
+
+def _check(saved: dict[str, list[str]]) -> dict[str, list[str]]:
     overrides = {}
-    for action, accels in settings.load_shortcut_overrides().items():
+    for action, accels in saved.items():
         if action not in SHORTCUTS:
             continue
         normalized = [normalize(accel) for accel in accels]

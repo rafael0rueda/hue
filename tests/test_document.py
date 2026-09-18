@@ -1,10 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Rafael Rueda
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import cairo
+
 from tempera import document as document_module
 from tempera.document import (
     MAX_SIZE,
     MAX_UNDO,
+    changed_rect,
     Document,
     copy_surface,
     crop_surface,
@@ -102,14 +105,20 @@ def test_undo_history_is_capped_at_max_undo():
     assert len(document._undo) == MAX_UNDO
 
 
+def paint_all(document, color) -> None:
+    document.begin_change()
+    cr = cairo.Context(document.surface)
+    cr.set_source_rgba(*color)
+    cr.paint()
+    document.commit_change()
+
+
 def test_undo_history_is_capped_by_memory(monkeypatch):
-    # Each step of a 10 × 10 image is 400 bytes; allow room for three.
+    # A step that changes all of a 10 × 10 image is 400 bytes; allow room for three.
     monkeypatch.setattr(document_module, "UNDO_BUDGET", 1200)
     document = Document(new_surface(10, 10, WHITE))
     for shade in range(5):
-        document.begin_change()
-        paint_pixel(document.surface, 0, 0, (shade * 51 / 255, 0.0, 0.0, 1.0))
-        document.commit_change()
+        paint_all(document, (shade * 51 / 255, 0.0, 0.0, 1.0))
 
     assert len(document._undo) == 3
     # What is left are the newest steps: undoing all of them lands on the
@@ -122,8 +131,8 @@ def test_undo_history_is_capped_by_memory(monkeypatch):
 def test_undo_history_keeps_the_newest_step_even_over_budget(monkeypatch):
     monkeypatch.setattr(document_module, "UNDO_BUDGET", 1)
     document = Document(new_surface(10, 10, WHITE))
-    for _ in range(3):
-        paint_change(document)
+    for shade in range(3):
+        paint_all(document, (shade / 3, 0.0, 0.0, 1.0))
     assert len(document._undo) == 1
 
 
@@ -430,3 +439,85 @@ def test_scaling_up_does_not_fade_the_edges():
     document.scale(16, 16)
     for x, y in ((0, 0), (15, 0), (0, 15), (15, 15), (8, 15)):
         assert pixel_at(document.surface, x, y) == (255, 0, 0, 255)
+
+
+# Undo steps keep only what changed
+
+
+def brute_changed_rect(a, b):
+    width, height = a.get_width(), a.get_height()
+    points = [
+        (x, y)
+        for y in range(height)
+        for x in range(width)
+        if pixel_at(a, x, y) != pixel_at(b, x, y)
+    ]
+    if not points:
+        return None
+    xs, ys = [x for x, _y in points], [y for _x, y in points]
+    return min(xs), min(ys), max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
+
+
+def test_changed_rect_finds_nothing_in_identical_images():
+    a = new_surface(7, 5, WHITE)
+    assert changed_rect(a, copy_surface(a)) is None
+
+
+def test_changed_rect_matches_a_pixel_by_pixel_search():
+    import random
+
+    generator = random.Random(4)
+    for _round in range(60):
+        width, height = generator.randint(1, 23), generator.randint(1, 17)
+        a = new_surface(width, height, WHITE)
+        b = copy_surface(a)
+        for _dot in range(generator.randint(1, 4)):
+            paint_pixel(b, generator.randrange(width), generator.randrange(height), RED)
+        assert changed_rect(a, b) == brute_changed_rect(a, b)
+
+
+def test_a_stroke_keeps_only_the_rectangle_it_touched():
+    document = Document(new_surface(400, 300, WHITE))
+    document.begin_change()
+    paint_pixel(document.surface, 10, 20, RED)
+    paint_pixel(document.surface, 14, 22, RED)
+    document.finish_change()
+    patch = document._undo[-1]
+    assert (patch.x, patch.y) == (10, 20)
+    assert (patch.pixels.get_width(), patch.pixels.get_height()) == (5, 3)
+
+
+def test_undo_and_redo_walk_through_mixed_edits():
+    document = Document(new_surface(6, 4, WHITE))
+    states = [copy_surface(document.surface)]
+
+    paint_change(document)
+    states.append(copy_surface(document.surface))
+    document.resize(9, 3)
+    states.append(copy_surface(document.surface))
+    document.begin_change()
+    paint_pixel(document.surface, 8, 2, (0.0, 0.0, 1.0, 1.0))
+    document.finish_change()
+    states.append(copy_surface(document.surface))
+    document.rotate(clockwise=True)
+    states.append(copy_surface(document.surface))
+
+    for expected in reversed(states[:-1]):
+        document.undo()
+        assert same_pixels(document.surface, expected)
+    assert not document.can_undo
+    for expected in states[1:]:
+        document.redo()
+        assert same_pixels(document.surface, expected)
+    assert not document.can_redo
+
+
+def test_undo_waits_for_a_stroke_to_finish():
+    document = Document(new_surface(3, 3, WHITE))
+    paint_change(document)
+    document.begin_change()
+    paint_pixel(document.surface, 2, 2, RED)
+    document.undo()
+    assert pixel_at(document.surface, 0, 0) == (255, 0, 0, 255)
+    document.finish_change()
+    assert len(document._undo) == 2
