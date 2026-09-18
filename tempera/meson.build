@@ -15,6 +15,7 @@ python.install_sources(
     'main.py',
     'preferences.py',
     'recent_files.py',
+    'recovery.py',
     'selection.py',
     'settings.py',
     'shortcuts.py',

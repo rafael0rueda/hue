@@ -8,6 +8,7 @@ import sys
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 
+import cairo
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -16,7 +17,8 @@ gi.require_version("GdkPixbuf", "2.0")
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
-from . import APP_ID, APP_NAME, VERSION, interface_size  # noqa: E402
+from . import APP_ID, APP_NAME, VERSION, interface_size, recovery  # noqa: E402
+from .document import Document  # noqa: E402
 from .file_io import load_document  # noqa: E402
 from .i18n import _
 from .recent_files import remember_recent  # noqa: E402
@@ -80,6 +82,8 @@ def data_dir() -> Path | None:
 class TemperaApplication(Adw.Application):
     def __init__(self):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_OPEN)
+        # Work left by a crash is offered once, when the first window opens.
+        self._recovery_checked = False
 
     def do_startup(self):
         Adw.Application.do_startup(self)
@@ -95,6 +99,7 @@ class TemperaApplication(Adw.Application):
     def do_activate(self):
         window = self.props.active_window or TemperaWindow(self)
         window.present()
+        self._offer_recovery(window)
 
     def do_open(self, files, n_files, hint):
         error_message = None
@@ -107,11 +112,77 @@ class TemperaApplication(Adw.Application):
             remember_recent(files[0])
         window = TemperaWindow(self, document)
         window.present()
+        self._offer_recovery(window)
         if error_message is not None:
             print(f"tempera: could not open image: {error_message}", file=sys.stderr)
             window.show_toast(
                 _("Could not open image: {message}").format(message=error_message)
             )
+
+    def _offer_recovery(self, window: TemperaWindow) -> None:
+        if self._recovery_checked:
+            return
+        self._recovery_checked = True
+        self._offer_next(window, recovery.find_leftovers())
+
+    def _offer_next(self, window: TemperaWindow, leftovers: list[recovery.Leftover]) -> None:
+        """Ask about each image a crash left unsaved, one at a time, newest first."""
+        if not leftovers:
+            return
+        leftover = leftovers.pop(0)
+        when = GLib.DateTime.new_from_unix_local(int(leftover.saved_at)).format("%c")
+        dialog = Adw.AlertDialog(
+            heading=_("Recover Unsaved Image?"),
+            body=_(
+                "Tempera stopped before the changes to “{title}” were saved. "
+                "A copy from {time} was kept."
+            ).format(title=leftover.title, time=when),
+        )
+        dialog.add_response("later", _("Decide Later"))
+        dialog.add_response("discard", _("Discard"))
+        dialog.add_response("recover", _("Recover"))
+        dialog.set_response_appearance("discard", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_response_appearance("recover", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("recover")
+        dialog.set_close_response("later")
+
+        def on_response(_dialog, response: str) -> None:
+            target = window
+            if response == "recover":
+                target = self._recover(window, leftover)
+            elif response == "discard":
+                leftover.discard()
+            else:
+                leftover.release()
+            self._offer_next(target, leftovers)
+
+        dialog.connect("response", on_response)
+        dialog.present(window)
+
+    def _recover(self, window: TemperaWindow, leftover: recovery.Leftover) -> TemperaWindow:
+        """Open a recovered image, as unsaved changes to the file it came from."""
+        try:
+            surface = leftover.load()
+        except (cairo.Error, MemoryError, OSError) as error:
+            # Kept for next time rather than lost.
+            leftover.release()
+            window.show_toast(
+                _("Could not recover “{title}”: {message}").format(
+                    title=leftover.title, message=str(error)
+                )
+            )
+            return window
+        document = Document(surface)
+        if leftover.uri is not None:
+            document.file = Gio.File.new_for_uri(leftover.uri)
+        document.modified = True
+        if not window.is_untouched():
+            window = TemperaWindow(self)
+            window.present()
+        window.show_recovered(document)
+        # The window has its own copy now.
+        leftover.discard()
+        return window
 
     def _load_resources(self) -> None:
         directory = data_dir()

@@ -219,6 +219,17 @@ ones picked lately, the JPEG quality, where the palette sits and the interface s
 are all kept in `~/.config/tempera/settings.ini` and put back the next
 time. A **New image** can start transparent instead of white.
 
+## Crash recovery
+
+While an image has unsaved changes, Tempera keeps a copy of it every 30 seconds in its
+own data folder. Your files are never touched — only **Save** writes them. If Tempera
+stops without closing, because of a crash or a power cut, the next start asks about each
+image left unsaved: **Recover** opens it as unsaved changes to the file it came from,
+**Discard** throws the copy away, and **Decide Later** keeps it to ask again next time.
+Saving, closing a window, or choosing **Discard** when closing deletes the copy, so it
+only lasts as long as the unsaved work does. A recovered image starts a fresh undo
+history.
+
 ## Moving the palette
 
 The colour palette sits in the bottom bar by default. **Palette Position** in the main
@@ -368,6 +379,11 @@ The Flatpak has no network permission, so the sandbox enforces it.
 Saved images carry no metadata — no EXIF, no camera details, no location — even when the
 image you opened had them. The orientation an EXIF tag asked for is applied to the pixels
 as the photo opens, so nothing is lost by dropping the rest.
+
+The crash-recovery copies of unsaved images live in `~/.local/share/tempera/recovery/`
+(`~/.var/app/io.github.rafael0rueda.Tempera/data/tempera/recovery/` for the Flatpak),
+readable only by you, and are deleted as soon as the image is saved or its changes are
+thrown away.
 
 **Recent Files** keeps the last eight names in `~/.config/tempera/recent-files.txt`. It
 follows GNOME's **Settings › Privacy › File History** switch: with that off, nothing is

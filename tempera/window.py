@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
-from . import APP_NAME, interface_size, shortcuts
+from . import APP_NAME, interface_size, recovery, shortcuts
 from .canvas import PIXEL_GRID_ZOOM, Canvas, CanvasFrame
 from .clipboard import has_image, read_image, texture_from_surface
 from .color import MAX_RECENT_COLORS, ColorBar, ColorState, PaletteLayout, Swatch, describe, rgba
@@ -118,6 +118,17 @@ class TemperaWindow(Adw.ApplicationWindow):
         self.canvas.connect("pointer-left", lambda *_args: self._cursor_label.set_label(""))
         self.canvas.connect("message", lambda _canvas, message: self.show_toast(message))
         self._closing = False
+        # A copy of unsaved work in Tempera's data folder, so a crash does not
+        # lose it. Counting changes tells whether the last copy is out of date.
+        self._recovery = recovery.RecoverySlot()
+        self._changes = 0
+        self._kept_changes: int | None = None
+        self._recovery_timer = GLib.timeout_add_seconds(
+            recovery.INTERVAL, self._keep_recovery_copy
+        )
+        # Ended when the window closes, not when it is destroyed: GTK only
+        # destroys it once nothing holds it, which may be never.
+        self.connect("destroy", self._end_recovery)
         self._busy = False
         self._typing = False
         self._syncing_size = False
@@ -746,7 +757,57 @@ class TemperaWindow(Adw.ApplicationWindow):
     def _watch_document(self) -> None:
         document = self.canvas.document
         document.connect("state-changed", lambda *_args: self._sync_state())
+        document.connect("content-changed", lambda *_args: self._note_change())
+        self._note_change()
         self._sync_state()
+
+    # Crash recovery
+
+    def _note_change(self) -> None:
+        self._changes += 1
+
+    def _keep_recovery_copy(self) -> bool:
+        """Keep a fresh copy of unsaved work, when there is any the last copy lacks."""
+        document = self.canvas.document
+        if not document.modified:
+            self._forget_recovery_copy()
+        elif self._kept_changes != self._changes:
+            self._kept_changes = self._changes
+            self._recovery.save(
+                document.surface,
+                {
+                    "title": document.title,
+                    "file": document.file.get_uri() if document.file is not None else None,
+                },
+            )
+        return GLib.SOURCE_CONTINUE
+
+    def _forget_recovery_copy(self) -> None:
+        if self._kept_changes is not None:
+            self._kept_changes = None
+            self._recovery.clear()
+
+    def _end_recovery(self, *_args) -> None:
+        """A normal close: saved, or the changes were thrown away on purpose."""
+        if self._recovery_timer:
+            GLib.source_remove(self._recovery_timer)
+            self._recovery_timer = 0
+        self._recovery.close()
+
+    def is_untouched(self) -> bool:
+        """Whether this is a blank window nobody has drawn in, which a recovered image may take over."""
+        document = self.canvas.document
+        return (
+            document.file is None
+            and not document.modified
+            and not document.can_undo
+            and not self.canvas.has_floating
+        )
+
+    def show_recovered(self, document: Document) -> None:
+        """Take over an image brought back after a crash, and keep a copy of it straight away."""
+        self._set_document(document)
+        self._keep_recovery_copy()
 
     def _set_document(self, document: Document) -> None:
         self.canvas.document = document
@@ -756,6 +817,9 @@ class TemperaWindow(Adw.ApplicationWindow):
 
     def _sync_state(self) -> None:
         document = self.canvas.document
+        if not document.modified:
+            # Saved, or undone back to how it was saved: nothing to recover.
+            self._forget_recovery_copy()
         marker = " •" if document.modified else ""
         self._title.set_title(f"{document.title}{marker}")
         # While a paste or a text box floats this counts out the size a commit
@@ -1315,6 +1379,7 @@ class TemperaWindow(Adw.ApplicationWindow):
 
     def _on_close_request(self, *_args) -> bool:
         if self._closing:
+            self._end_recovery()
             return False
         self._save_preferences()
 
@@ -1322,6 +1387,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         # from inside the handler instead does nothing, since GTK ignores a
         # close while it is still deciding on this one.
         if not self.canvas.document.modified and not self.canvas.has_pending_floating:
+            self._end_recovery()
             return False
 
         def close():

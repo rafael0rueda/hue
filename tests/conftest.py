@@ -12,3 +12,15 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("GdkPixbuf", "2.0")
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def private_recovery_dir(monkeypatch, tmp_path):
+    """Crash-recovery copies go to a folder of each test's own, never the real one."""
+    from tempera import recovery
+
+    directory = tmp_path / "recovery"
+    monkeypatch.setattr(recovery, "recovery_dir", lambda: directory)
+    return directory
