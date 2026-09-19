@@ -15,16 +15,19 @@
     </p>
     <p>Features:</p>
     <ul>
-      <li>Pencil, brush and eraser, which can rub back to transparency</li>
-      <li>Line, rectangle and ellipse, filled or outlined, with Shift for squares, circles and 45° lines</li>
+      <li>Pencil, brush, airbrush and eraser, which can rub back to transparency</li>
+      <li>Nine shapes — line, curve, arrow, rectangle, rounded rectangle, ellipse, triangle, star and polygon — filled or outlined, with Shift for squares, circles and 45° lines</li>
       <li>Text in any font installed on the system</li>
       <li>Flood fill with an adjustable tolerance, and a colour picker</li>
       <li>Colours of any opacity, with the ones picked lately kept beside the palette</li>
-      <li>Rectangular selection to move, copy, cut, stretch or crop to</li>
+      <li>Rectangular and free-form selection to move, copy, cut, stretch or crop to</li>
       <li>Paste screenshots and drop images straight onto the canvas</li>
       <li>Resize the picture, or the canvas around it, and rotate or flip it</li>
-      <li>Zoom from 10% to 800% or to fit the window, with crisp pixels when zoomed in; pan with the middle mouse button or pinch on a touchpad</li>
+      <li>Zoom from 10% to 800% or to fit the window, with crisp pixels and an optional pixel grid when zoomed in; pan with the middle mouse button or pinch on a touchpad</li>
       <li>Undo and redo history, and a list of recently opened files</li>
+      <li>Unsaved work is kept safe and offered back after a crash</li>
+      <li>Print, fitted to the page or at actual size, with a preview</li>
+      <li>A bigger interface, from 100% to 200%, for text, buttons and icons alike</li>
       <li>Keyboard shortcuts you can change to suit you, and every action reachable from the keyboard</li>
       <li>A colour palette along the bottom, under the tools or beside the canvas</li>
     </ul>
@@ -61,11 +64,15 @@
   <screenshots>
     <screenshot type="default">
       <caption>Painting a landscape with the brush</caption>
-      <image type="source" width="1120" height="800">https://raw.githubusercontent.com/rafael0rueda/tempera/v1.0.0/data/screenshots/main-window.png</image>
+      <image type="source" width="1120" height="800">https://raw.githubusercontent.com/rafael0rueda/tempera/v1.1.0/data/screenshots/main-window.png</image>
     </screenshot>
     <screenshot>
-      <caption>The dark style, with a selection and the fill tool's tolerance</caption>
-      <image type="source" width="1120" height="800">https://raw.githubusercontent.com/rafael0rueda/tempera/v1.0.0/data/screenshots/dark-style.png</image>
+      <caption>The dark style, with a free-form selection drawn with the lasso</caption>
+      <image type="source" width="1120" height="800">https://raw.githubusercontent.com/rafael0rueda/tempera/v1.1.0/data/screenshots/dark-style.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A bigger interface size, with the Shapes tool</caption>
+      <image type="source" width="1120" height="800">https://raw.githubusercontent.com/rafael0rueda/tempera/v1.1.0/data/screenshots/interface-size.png</image>
     </screenshot>
   </screenshots>
   <categories>
@@ -73,6 +80,27 @@
     <category>RasterGraphics</category>
   </categories>
   <releases>
+    <release version="1.1.0" date="2026-09-19">
+      <description>
+        <p>Tempera 1.1 brings more ways to draw and select, printing, and a bigger interface for those who need it.</p>
+        <p>New features:</p>
+        <ul>
+          <li>The Shapes tool gathers nine shapes in one place: line, curve, arrow, rectangle, rounded rectangle, ellipse, triangle, star and polygon</li>
+          <li>The airbrush sprays paint that builds up while the button is held, with an adjustable density</li>
+          <li>The lasso selects any shape drawn by hand, to move, copy, cut, delete or crop to</li>
+          <li>Show Pixel Grid (Ctrl+G) draws a line between pixels from 400% zoom</li>
+          <li>Print (Ctrl+P), fitted to the page or at actual size, with a preview first</li>
+          <li>Unsaved work is copied every 30 seconds and offered back after a crash</li>
+          <li>Preferences (Ctrl+,) can make text, buttons and icons bigger, up to 200%</li>
+        </ul>
+        <p>Improvements:</p>
+        <ul>
+          <li>Fill shape shows the colour a shape will be filled with</li>
+          <li>The selection outline stays one screen pixel thin at every zoom</li>
+          <li>The handles of a small selection no longer get in the way of moving it</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-09-17">
       <description>
         <p>Tempera 1.0 rounds out the essentials of a paint program.</p>

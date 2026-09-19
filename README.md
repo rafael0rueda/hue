@@ -12,7 +12,7 @@ Each [release](https://github.com/rafael0rueda/tempera/releases) has a Flatpak b
 attached. Download `Tempera-<version>-x86_64.flatpak` and install it for your user:
 
 ```
-flatpak install --user Tempera-1.0.0-x86_64.flatpak
+flatpak install --user Tempera-1.1.0-x86_64.flatpak
 ```
 
 It runs on the GNOME 50 runtime, which Flatpak offers to fetch from Flathub if you do
@@ -377,6 +377,8 @@ resizing the canvas. The change applies straight away to every open window and i
 remembered. It adds to GNOME's own **Large Text** setting rather than replacing it; the
 image itself and the file dialogs, which the desktop draws, keep their usual size. When
 the window is too small for everything at a big size, the sidebar and palette scroll.
+
+![Tempera at 150% interface size, with the Shapes tool selected and its nine shapes and the Fill shape option under the size slider](data/screenshots/interface-size.png)
 
 ## Translations
 
