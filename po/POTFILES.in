@@ -8,6 +8,7 @@ tempera/color.py
 tempera/file_io.py
 tempera/main.py
 tempera/preferences.py
+tempera/printing.py
 tempera/shortcuts.py
 tempera/shortcuts_dialog.py
 tempera/tools/airbrush.py

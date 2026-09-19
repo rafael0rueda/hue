@@ -24,3 +24,13 @@ def private_recovery_dir(monkeypatch, tmp_path):
     directory = tmp_path / "recovery"
     monkeypatch.setattr(recovery, "recovery_dir", lambda: directory)
     return directory
+
+
+@pytest.fixture(autouse=True)
+def private_print_settings(monkeypatch, tmp_path):
+    """The printer and paper last chosen are kept in each test's own file."""
+    from tempera import printing
+
+    path = tmp_path / "print-settings.ini"
+    monkeypatch.setattr(printing, "_print_setup_path", lambda: path)
+    return path

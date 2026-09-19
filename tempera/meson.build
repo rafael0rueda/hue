@@ -14,6 +14,7 @@ python.install_sources(
     'interface_size.py',
     'main.py',
     'preferences.py',
+    'printing.py',
     'recent_files.py',
     'recovery.py',
     'selection.py',

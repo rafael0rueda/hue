@@ -135,6 +135,7 @@ a tolerance for the fill, and the font for the text tool.
 | Action                      | Shortcut                                         |
 | --------------------------- | ------------------------------------------------ |
 | New / Open / Save / Save As | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` / `Ctrl+Shift+S`  |
+| Print                       | `Ctrl+P`                                         |
 | Canvas size                 | `Ctrl+E`                                         |
 | Resize image                | `Ctrl+R`                                         |
 | Select all                  | `Ctrl+A`                                         |
@@ -195,6 +196,17 @@ part of the picture that edit changed, so brush strokes on a large photo cost li
 step that changes the whole picture, such as a fill or a rotation, holds all of it, and
 the history gives up its oldest steps rather than use more than 1 GB.
 
+## Printing
+
+**Print…** in the main menu (or `Ctrl+P`) first shows the page with the image on it.
+**Fit to Page** makes the image as big as the paper allows, and **Actual Size** prints it
+as big as it looks at 100% zoom, 96 pixels to the inch; an image too big for one page is
+spread over several, which it says, to be laid side by side. The page turns to landscape
+for a wide image, and **Portrait** and **Landscape** change that. **Print…** then opens
+the system's print dialog, to choose the printer, paper and copies, or to print to a PDF.
+What prints is the image as it was when you chose **Print…**, with any floating paste or
+text landed first. Tempera remembers the fit, and the printer and paper last used.
+
 ## Zooming
 
 `Ctrl`+scroll zooms around the pointer, so whatever is under it stays put; `Ctrl++` and
@@ -217,7 +229,8 @@ The window size, the tool and shape in hand, the brush and text sizes, the font,
 tolerance, the airbrush density, whether the pixel grid is on, both colours with the
 ones picked lately, the JPEG quality, where the palette sits and the interface size
 are all kept in `~/.config/tempera/settings.ini` and put back the next
-time. A **New image** can start transparent instead of white.
+time, along with how to fit a print. The printer and paper last printed on are kept in
+`~/.config/tempera/print-settings.ini`. A **New image** can start transparent instead of white.
 
 ## Crash recovery
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
-from . import APP_NAME, interface_size, recovery, shortcuts
+from . import APP_NAME, interface_size, printing, recovery, shortcuts
 from .canvas import PIXEL_GRID_ZOOM, Canvas, CanvasFrame
 from .clipboard import has_image, read_image, texture_from_surface
 from .color import MAX_RECENT_COLORS, ColorBar, ColorState, PaletteLayout, Swatch, describe, rgba
@@ -39,10 +39,12 @@ from .tools import (
     TOOL_CLASSES,
 )
 
-# Actions that edit or replace the image. A stroke, move or resize in progress
-# holds on to the image it started on, so these wait until the button is let go.
+# Actions that edit or replace the image, or like Print land what is floating
+# on it. A stroke, move or resize in progress holds on to the image it started
+# on, so these wait until the button is let go.
 IMAGE_ACTIONS = {
     "new",
+    "print",
     "open",
     "undo",
     "redo",
@@ -226,6 +228,7 @@ class TemperaWindow(Adw.ApplicationWindow):
         file_section = Gio.Menu()
         file_section.append_submenu(_("Recent Files"), self._recent_menu)
         file_section.append(_("Save As…"), "win.save-as")
+        file_section.append(_("Print…"), "win.print")
         file_section.append(_("Canvas Size…"), "win.resize")
         menu.append_section(None, file_section)
         app_section = Gio.Menu()
@@ -504,6 +507,7 @@ class TemperaWindow(Adw.ApplicationWindow):
             "open": self._action_open,
             "save": lambda *_args: self._save(),
             "save-as": lambda *_args: self._save_as(),
+            "print": lambda *_args: self._print(),
             "undo": self._action_undo,
             "redo": lambda *_args: self.canvas.document.redo(),
             "select-all": lambda *_args: self._select_all(),
@@ -1216,6 +1220,24 @@ class TemperaWindow(Adw.ApplicationWindow):
             return
         # Ctrl+S keeps the quality already chosen; only Save As asks for it.
         self._write_now(document.file, then, self._last_jpeg_quality)
+
+    def _print(self) -> None:
+        # What gets printed should match what is on screen.
+        self.canvas.commit_floating()
+        document = self.canvas.document
+
+        def on_print(size: str, orientation) -> None:
+            save_settings({"print-size": size})
+            job = printing.PrintJob(document.surface, document.title, size, orientation)
+
+            def on_error(message: str) -> None:
+                self.show_toast(_("Could not print: {message}").format(message=message))
+
+            printing.print_image(self, job, on_error)
+
+        printing.PrintDialog(
+            document.surface, load_setting("print-size", printing.DEFAULT_SIZE), on_print
+        ).present(self)
 
     def _save_as(self, then=None) -> None:
         if self._busy:
