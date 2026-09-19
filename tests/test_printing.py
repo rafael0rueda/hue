@@ -184,11 +184,9 @@ def test_the_preview_draws_the_image_on_a_page():
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 100, 100)
     dialog._draw_preview(None, cairo.Context(surface), 100, 100)
     assert pixel_at(surface, 50, 50) == RED_PIXEL
-    # White paper around the margins, nothing beside the page.
-    page_setup = dialog.page_setup()
-    scale = 100 / page_setup.get_paper_height(Gtk.Unit.POINTS)
-    left = (100 - page_setup.get_paper_width(Gtk.Unit.POINTS) * scale) / 2
-    assert pixel_at(surface, round(left) + 2, 50) == (255, 255, 255, 255)
+    # A square image on an upright page leaves white paper above it, and
+    # nothing is drawn beside the page.
+    assert pixel_at(surface, 50, 5) == (255, 255, 255, 255)
     assert pixel_at(surface, 1, 50) == CLEAR_PIXEL
 
 
